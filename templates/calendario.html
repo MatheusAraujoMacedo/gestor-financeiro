@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% block title %}Calendário Financeiro - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section page-section-wide">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-calendar-alt"></i> Calendário Financeiro</h1>
+            <p class="page-subtitle">Visualize suas transações e vencimentos no calendário</p>
+        </div>
+    </div>
+
+    <!-- Month Navigation -->
+    <div class="cal-nav">
+        <a href="{{ url_for('calendario', mes=mes_ant, ano=ano_ant) }}" class="btn btn-glass btn-sm">
+            <i class="fas fa-chevron-left"></i>
+        </a>
+        <h2 class="cal-month-title">{{ nome_mes }} {{ ano }}</h2>
+        <a href="{{ url_for('calendario', mes=mes_prox, ano=ano_prox) }}" class="btn btn-glass btn-sm">
+            <i class="fas fa-chevron-right"></i>
+        </a>
+    </div>
+
+    <!-- Calendar Grid -->
+    <div class="cal-grid">
+        <!-- Weekday headers -->
+        <div class="cal-weekday">Seg</div>
+        <div class="cal-weekday">Ter</div>
+        <div class="cal-weekday">Qua</div>
+        <div class="cal-weekday">Qui</div>
+        <div class="cal-weekday">Sex</div>
+        <div class="cal-weekday cal-weekend">Sáb</div>
+        <div class="cal-weekday cal-weekend">Dom</div>
+
+        <!-- Empty cells before first day (Monday=0) -->
+        {% for _ in range(primeiro_dia_semana) %}
+        <div class="cal-cell cal-cell-empty"></div>
+        {% endfor %}
+
+        <!-- Day cells -->
+        {% for day in range(1, dias_no_mes + 1) %}
+        {% set is_today = (day == hoje.day and mes == hoje.month and ano == hoje.year) %}
+        {% set has_data = day in dias %}
+        {% set has_venc = day in vencimentos %}
+        <div class="cal-cell {% if is_today %}cal-cell-today{% endif %} {% if has_data %}cal-cell-active{% endif %}" {%
+            if has_data %}onclick="showDayDetail({{ day }})" {% endif %}>
+            <span class="cal-day-num {% if is_today %}cal-today-num{% endif %}">{{ day }}</span>
+
+            {% if has_data %}
+            <div class="cal-dots">
+                {% if dias[day]['receitas'] > 0 %}
+                <span class="cal-dot cal-dot-green" title="Receitas: {{ dias[day]['receitas']|brl }}"></span>
+                {% endif %}
+                {% if dias[day]['despesas'] > 0 %}
+                <span class="cal-dot cal-dot-red" title="Despesas: {{ dias[day]['despesas']|brl }}"></span>
+                {% endif %}
+            </div>
+            <div class="cal-cell-values">
+                {% if dias[day]['receitas'] > 0 %}
+                <span class="cal-val cal-val-green">+{{ dias[day]['receitas']|brl }}</span>
+                {% endif %}
+                {% if dias[day]['despesas'] > 0 %}
+                <span class="cal-val cal-val-red">-{{ dias[day]['despesas']|brl }}</span>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if has_venc %}
+            <div class="cal-venc" title="Vencimento: {{ vencimentos[day].nome }}">
+                <i class="fas fa-bell"></i>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Legend -->
+    <div class="cal-legend">
+        <span><span class="cal-dot cal-dot-green"></span> Receitas</span>
+        <span><span class="cal-dot cal-dot-red"></span> Despesas</span>
+        <span><i class="fas fa-bell" style="color: var(--accent-yellow); font-size: 0.8rem;"></i> Vencimento</span>
+        <span><span class="cal-today-badge"></span> Hoje</span>
+    </div>
+
+    <!-- Day Detail Panel -->
+    <div class="cal-detail" id="calDetail" style="display: none;">
+        <div class="cal-detail-header">
+            <h3 id="calDetailTitle">Dia</h3>
+            <button class="btn-icon btn-icon-sm" onclick="document.getElementById('calDetail').style.display='none'">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div id="calDetailBody"></div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const diasData = {{ dias| tojson(indent = None) if dias else '{}' }};
+
+    function showDayDetail(day) {
+        const panel = document.getElementById('calDetail');
+        const title = document.getElementById('calDetailTitle');
+        const body = document.getElementById('calDetailBody');
+        const data = diasData[day];
+
+        if (!data) return;
+
+        title.textContent = `{{ nome_mes }} ${day}, {{ ano }}`;
+
+        let html = '<div class="cal-detail-summary">';
+        if (data.receitas > 0) html += `<span class="text-green"><i class="fas fa-arrow-up"></i> R$ ${data.receitas.toFixed(2).replace('.', ',')}</span>`;
+        if (data.despesas > 0) html += `<span class="text-red"><i class="fas fa-arrow-down"></i> R$ ${data.despesas.toFixed(2).replace('.', ',')}</span>`;
+        html += '</div>';
+
+        html += '<div class="cal-detail-list">';
+        data.transacoes.forEach(t => {
+            const isRec = t.tipo === 'receita';
+            html += `<div class="cal-detail-item">
+                <span class="type-badge type-${t.tipo}">
+                    <i class="fas fa-arrow-${isRec ? 'up' : 'down'}"></i>
+                </span>
+                <span class="cal-detail-desc">${t.descricao || '—'}</span>
+                <span class="${isRec ? 'text-green' : 'text-red'}" style="font-weight:700">
+                    ${isRec ? '' : '-'}R$ ${t.valor.toFixed(2).replace('.', ',')}
+                </span>
+            </div>`;
+        });
+        html += '</div>';
+
+        body.innerHTML = html;
+        panel.style.display = 'block';
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+</script>
+{% endblock %}

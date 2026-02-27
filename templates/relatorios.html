@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+{% block title %}Relatórios - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section page-section-wide">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-chart-bar"></i> Relatórios</h1>
+            <p class="page-subtitle">Análise detalhada das suas finanças</p>
+        </div>
+        <form class="year-selector" method="GET" action="{{ url_for('relatorios') }}">
+            <select name="ano" onchange="this.form.submit()">
+                {% for a in anos %}
+                <option value="{{ a }}" {% if ano==a %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    <!-- Stats do Ano -->
+    <div class="stats-grid stats-grid-3">
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-green"><i class="fas fa-arrow-up"></i></div>
+            <div class="stat-info">
+                <span class="stat-label">Receitas em {{ ano }}</span>
+                <span class="stat-value text-green">{{ total_receitas_ano|brl }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-red"><i class="fas fa-arrow-down"></i></div>
+            <div class="stat-info">
+                <span class="stat-label">Despesas em {{ ano }}</span>
+                <span class="stat-value text-red">{{ total_despesas_ano|brl }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(124, 92, 252, 0.15); color: #7c5cfc;">
+                <i class="fas fa-scale-balanced"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Balanço {{ ano }}</span>
+                <span
+                    class="stat-value {% if total_receitas_ano - total_despesas_ano >= 0 %}text-green{% else %}text-red{% endif %}">
+                    {{ (total_receitas_ano - total_despesas_ano)|brl }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="charts-row">
+        <!-- Receitas vs Despesas Mensal -->
+        <div class="chart-card chart-card-wide">
+            <h2><i class="fas fa-chart-bar"></i> Receitas vs Despesas (Mensal)</h2>
+            <div class="chart-container chart-container-lg">
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Evolução do Saldo -->
+        <div class="chart-card chart-card-wide">
+            <h2><i class="fas fa-chart-line"></i> Evolução do Saldo Acumulado</h2>
+            <div class="chart-container chart-container-lg">
+                <canvas id="lineChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Breakdown Row -->
+    <div class="charts-row">
+        <!-- Despesas por Categoria -->
+        <div class="chart-card">
+            <h2><i class="fas fa-chart-pie"></i> Despesas por Categoria</h2>
+            {% if top_categorias %}
+            <div class="chart-container">
+                <canvas id="pieChartDesp"></canvas>
+            </div>
+            <div class="chart-legend">
+                {% for nome, valor in top_categorias %}
+                <div class="legend-item">
+                    <span class="legend-name">{{ nome }}</span>
+                    <span class="legend-value">{{ valor|brl }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="chart-empty"><i class="fas fa-chart-pie"></i>
+                <p>Sem despesas em {{ ano }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Receitas por Categoria -->
+        <div class="chart-card">
+            <h2><i class="fas fa-chart-pie"></i> Receitas por Categoria</h2>
+            {% if top_receitas %}
+            <div class="chart-container">
+                <canvas id="pieChartRec"></canvas>
+            </div>
+            <div class="chart-legend">
+                {% for nome, valor in top_receitas %}
+                <div class="legend-item">
+                    <span class="legend-name">{{ nome }}</span>
+                    <span class="legend-value text-green">{{ valor|brl }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="chart-empty"><i class="fas fa-chart-pie"></i>
+                <p>Sem receitas em {{ ano }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Monthly Table -->
+    <div class="table-card">
+        <div class="table-header">
+            <h2><i class="fas fa-table"></i> Resumo Mensal</h2>
+        </div>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Mês</th>
+                        <th>Receitas</th>
+                        <th>Despesas</th>
+                        <th>Saldo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in meses_dados %}
+                    <tr class="fade-in-row">
+                        <td><strong>{{ m.nome }}</strong></td>
+                        <td class="text-green">{{ m.receitas|brl }}</td>
+                        <td class="text-red">{{ m.despesas|brl }}</td>
+                        <td class="{% if m.saldo >= 0 %}text-green{% else %}text-red{% endif %}"
+                            style="font-weight: 700">
+                            {{ m.saldo|brl }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="border-top: 2px solid var(--border-accent);">
+                        <td><strong>Total</strong></td>
+                        <td class="text-green" style="font-weight: 700">{{ total_receitas_ano|brl }}</td>
+                        <td class="text-red" style="font-weight: 700">{{ total_despesas_ano|brl }}</td>
+                        <td class="{% if total_receitas_ano - total_despesas_ano >= 0 %}text-green{% else %}text-red{% endif %}"
+                            style="font-weight: 700">
+                            {{ (total_receitas_ano - total_despesas_ano)|brl }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const chartColors = ['#7c5cfc', '#00d68f', '#ff6b6b', '#ffd93d', '#4ecdc4', '#45b7d1', '#f093fb', '#ff8a5c'];
+    const meses = {{ meses_dados| map(attribute = 'nome') | list | tojson }};
+    const receitas = {{ meses_dados| map(attribute = 'receitas') | list | tojson }};
+    const despesas = {{ meses_dados| map(attribute = 'despesas') | list | tojson }};
+    const saldoAcumulado = {{ saldo_acumulado| tojson }};
+
+    const chartDefaults = {
+        color: '#a0a3bd',
+        font: { family: 'Inter' }
+    };
+
+    // Bar Chart - Receitas vs Despesas
+    new Chart(document.getElementById('barChart'), {
+        type: 'bar',
+        data: {
+            labels: meses,
+            datasets: [
+                { label: 'Receitas', data: receitas, backgroundColor: 'rgba(0, 214, 143, 0.7)', borderColor: '#00d68f', borderWidth: 1, borderRadius: 6 },
+                { label: 'Despesas', data: despesas, backgroundColor: 'rgba(255, 71, 87, 0.7)', borderColor: '#ff4757', borderWidth: 1, borderRadius: 6 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: chartDefaults },
+                tooltip: { backgroundColor: 'rgba(15,15,30,0.95)', titleColor: '#fff', bodyColor: '#a0a3bd', borderColor: 'rgba(124,92,252,0.3)', borderWidth: 1, padding: 12 }
+            },
+            scales: {
+                x: { ticks: chartDefaults, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { ticks: chartDefaults, grid: { color: 'rgba(255,255,255,0.04)' } }
+            }
+        }
+    });
+
+    // Line Chart - Saldo Acumulado
+    new Chart(document.getElementById('lineChart'), {
+        type: 'line',
+        data: {
+            labels: meses,
+            datasets: [{
+                label: 'Saldo Acumulado',
+                data: saldoAcumulado,
+                borderColor: '#7c5cfc', backgroundColor: 'rgba(124,92,252,0.1)',
+                borderWidth: 3, fill: true, tension: 0.4, pointRadius: 5,
+                pointBackgroundColor: '#7c5cfc', pointBorderColor: '#0f0f1e', pointBorderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: chartDefaults },
+                tooltip: { backgroundColor: 'rgba(15,15,30,0.95)', titleColor: '#fff', bodyColor: '#a0a3bd', borderColor: 'rgba(124,92,252,0.3)', borderWidth: 1, padding: 12 }
+            },
+            scales: {
+                x: { ticks: chartDefaults, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { ticks: chartDefaults, grid: { color: 'rgba(255,255,255,0.04)' } }
+            }
+        }
+    });
+
+    {% if top_categorias %}
+    new Chart(document.getElementById('pieChartDesp'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ top_categorias| map('first') | list | tojson }},
+        datasets: [{ data: {{ top_categorias| map('last') | list | tojson }}, backgroundColor: chartColors, borderColor: 'rgba(15,15,30,0.8)', borderWidth: 3, hoverOffset: 8 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { display: false } } }
+    });
+    {% endif %}
+
+    {% if top_receitas %}
+    new Chart(document.getElementById('pieChartRec'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ top_receitas| map('first') | list | tojson }},
+        datasets: [{ data: {{ top_receitas| map('last') | list | tojson }}, backgroundColor: ['#00d68f', '#45b7d1', '#7c5cfc', '#ffd93d', '#4ecdc4', '#f093fb', '#ff8a5c', '#25cc97'], borderColor: 'rgba(15,15,30,0.8)', borderWidth: 3, hoverOffset: 8 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { display: false } } }
+    });
+    {% endif %}
+</script>
+{% endblock %}

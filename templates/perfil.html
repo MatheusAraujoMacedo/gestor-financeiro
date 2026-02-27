@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block title %}Meu Perfil - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-user-circle"></i> Meu Perfil</h1>
+            <p class="page-subtitle">Gerencie suas informações e preferências</p>
+        </div>
+    </div>
+
+    <div class="profile-layout">
+        <!-- Profile Card -->
+        <div class="profile-card">
+            <div class="profile-avatar">
+                <i class="fas fa-user"></i>
+            </div>
+            <h2>{{ current_user.nome }}</h2>
+            <p class="text-muted">{{ current_user.email }}</p>
+            <p class="text-muted" style="font-size: 0.78rem; margin-top: 8px;">
+                <i class="fas fa-calendar"></i> Membro desde {{ current_user.criado_em|data_br }}
+            </p>
+
+            <!-- Stats -->
+            <div class="profile-stats">
+                <div class="profile-stat">
+                    <span class="profile-stat-value">{{ total_transacoes }}</span>
+                    <span class="profile-stat-label">Transações</span>
+                </div>
+                <div class="profile-stat">
+                    <span class="profile-stat-value">{{ total_contas }}</span>
+                    <span class="profile-stat-label">Contas</span>
+                </div>
+                <div class="profile-stat">
+                    <span class="profile-stat-value">{{ metas_concluidas }}</span>
+                    <span class="profile-stat-label">Metas ✅</span>
+                </div>
+            </div>
+
+            <!-- Quick stats -->
+            <div class="profile-finance">
+                <div class="profile-finance-item">
+                    <span class="text-muted">Total Receitas</span>
+                    <span class="text-green" style="font-weight: 700">{{ total_receitas|brl }}</span>
+                </div>
+                <div class="profile-finance-item">
+                    <span class="text-muted">Total Despesas</span>
+                    <span class="text-red" style="font-weight: 700">{{ total_despesas|brl }}</span>
+                </div>
+            </div>
+
+            <!-- Export CSV -->
+            <div style="margin-top: 16px;">
+                <a href="{{ url_for('exportar_csv') }}" class="btn btn-glass btn-block">
+                    <i class="fas fa-download"></i> Exportar Transações (CSV)
+                </a>
+            </div>
+
+            <!-- Theme toggle -->
+            <div style="margin-top: 10px;">
+                <button class="btn btn-glass btn-block" id="themeToggle" onclick="toggleTheme()">
+                    <i class="fas fa-{{ 'sun' if current_user.tema == 'dark' else 'moon' }}"></i>
+                    Tema {{ 'Claro' if current_user.tema == 'dark' else 'Escuro' }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Edit forms -->
+        <div class="profile-forms">
+            <!-- Edit info -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h2><i class="fas fa-edit" style="color: var(--accent-purple)"></i> Editar Informações</h2>
+                </div>
+                <form action="{{ url_for('editar_perfil') }}" method="POST" class="auth-form">
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> Nome</label>
+                        <input type="text" name="nome" value="{{ current_user.nome }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> Email</label>
+                        <input type="email" name="email" value="{{ current_user.email }}" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <i class="fas fa-save"></i> Salvar Alterações
+                    </button>
+                </form>
+            </div>
+
+            <!-- Change password -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h2><i class="fas fa-lock" style="color: var(--accent-yellow)"></i> Alterar Senha</h2>
+                </div>
+                <form action="{{ url_for('alterar_senha') }}" method="POST" class="auth-form">
+                    <div class="form-group">
+                        <label><i class="fas fa-key"></i> Senha Atual</label>
+                        <input type="password" name="senha_atual" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> Nova Senha</label>
+                        <input type="password" name="nova_senha" minlength="6" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-check"></i> Confirmar Nova Senha</label>
+                        <input type="password" name="confirmar_senha" minlength="6" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <i class="fas fa-key"></i> Alterar Senha
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleTheme() {
+        fetch('/tema/toggle', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => {
+                document.documentElement.setAttribute('data-theme', d.tema);
+                const btn = document.getElementById('themeToggle');
+                if (d.tema === 'dark') {
+                    btn.innerHTML = '<i class="fas fa-sun"></i> Tema Claro';
+                } else {
+                    btn.innerHTML = '<i class="fas fa-moon"></i> Tema Escuro';
+                }
+            });
+    }
+</script>
+{% endblock %}

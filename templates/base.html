@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-br" data-theme="{% if current_user.is_authenticated %}{{ current_user.tema }}{% else %}dark{% endif %}">
 
 <head>
     <meta charset="UTF-8">
@@ -30,24 +30,24 @@
                 <li><a href="{{ url_for('dashboard') }}"
                         class="{% if request.endpoint == 'dashboard' %}nav-active{% endif %}"><i
                             class="fas fa-chart-pie"></i> Dashboard</a></li>
-                <li><a href="{{ url_for('despesas_fixas') }}"
-                        class="{% if request.endpoint == 'despesas_fixas' %}nav-active{% endif %}"><i
-                            class="fas fa-file-invoice-dollar"></i> Contas Fixas</a></li>
-                <li><a href="{{ url_for('orcamentos') }}"
-                        class="{% if request.endpoint == 'orcamentos' %}nav-active{% endif %}"><i
-                            class="fas fa-bullseye"></i> Orçamentos</a></li>
+                <li><a href="{{ url_for('relatorios') }}"
+                        class="{% if request.endpoint == 'relatorios' %}nav-active{% endif %}"><i
+                            class="fas fa-chart-bar"></i> Relatórios</a></li>
+                <li><a href="{{ url_for('calendario') }}"
+                        class="{% if request.endpoint == 'calendario' %}nav-active{% endif %}"><i
+                            class="fas fa-calendar-alt"></i> Calendário</a></li>
                 <li><a href="{{ url_for('metas') }}"
                         class="{% if request.endpoint == 'metas' %}nav-active{% endif %}"><i
                             class="fas fa-flag-checkered"></i> Metas</a></li>
                 <li><a href="{{ url_for('cartoes') }}"
                         class="{% if request.endpoint == 'cartoes' %}nav-active{% endif %}"><i
                             class="fas fa-credit-card"></i> Cartões</a></li>
-                <li><a href="{{ url_for('contas') }}"
-                        class="{% if request.endpoint == 'contas' %}nav-active{% endif %}"><i class="fas fa-wallet"></i>
-                        Contas</a></li>
-                <li><a href="{{ url_for('categorias') }}"
-                        class="{% if request.endpoint == 'categorias' %}nav-active{% endif %}"><i
-                            class="fas fa-tags"></i> Categorias</a></li>
+                <li><a href="{{ url_for('busca') }}"
+                        class="{% if request.endpoint == 'busca' %}nav-active{% endif %}"><i class="fas fa-search"></i>
+                        Busca</a></li>
+                <li><a href="{{ url_for('perfil') }}"
+                        class="{% if request.endpoint == 'perfil' %}nav-active{% endif %}"><i
+                            class="fas fa-user-circle"></i> Perfil</a></li>
                 <li>
                     <a href="{{ url_for('logout') }}" class="nav-btn nav-btn-outline">
                         <i class="fas fa-sign-out-alt"></i> Sair

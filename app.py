@@ -1,17 +1,28 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date
 import calendar as cal_module
 import json
+import csv
+import io
 import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'gestor-financeiro-secret-key-2026'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///gestor.db'
+
+# Configurações para deploy / local
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gestor-financeiro-secret-key-2026')
+
+db_url = os.environ.get('DATABASE_URL', 'sqlite:///gestor.db')
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'webp'}
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
 
@@ -117,6 +128,7 @@ class Transacao(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
     conta_id = db.Column(db.Integer, db.ForeignKey('conta.id'), nullable=True)
     categoria_id = db.Column(db.Integer, db.ForeignKey('categoria.id'), nullable=True)
+    comprovante = db.Column(db.String(200), nullable=True)  # filename of receipt
 
     tags = db.relationship('Tag', secondary=transacao_tags, lazy='subquery',
                            backref=db.backref('transacoes', lazy=True))
@@ -1337,6 +1349,170 @@ def busca():
                            q=q, tipo=tipo,
                            data_inicio=data_inicio, data_fim=data_fim,
                            valor_min=valor_min, valor_max=valor_max)
+
+
+# =============================================
+# PERFIL DO USUÁRIO
+# =============================================
+
+@app.route('/perfil')
+@login_required
+def perfil():
+    total_transacoes = Transacao.query.filter_by(usuario_id=current_user.id).count()
+    total_receitas = sum(t.valor for t in Transacao.query.filter_by(usuario_id=current_user.id, tipo='receita').all())
+    total_despesas = sum(t.valor for t in Transacao.query.filter_by(usuario_id=current_user.id, tipo='despesa').all())
+    total_contas = Conta.query.filter_by(usuario_id=current_user.id).count()
+    metas_concluidas = Meta.query.filter_by(usuario_id=current_user.id, concluida=True).count()
+
+    return render_template('perfil.html',
+                           total_transacoes=total_transacoes,
+                           total_receitas=total_receitas,
+                           total_despesas=total_despesas,
+                           total_contas=total_contas,
+                           metas_concluidas=metas_concluidas)
+
+
+@app.route('/perfil/editar', methods=['POST'])
+@login_required
+def editar_perfil():
+    nome = request.form.get('nome', '').strip()
+    email = request.form.get('email', '').strip()
+
+    if not nome or not email:
+        flash('Nome e email são obrigatórios.', 'error')
+        return redirect(url_for('perfil'))
+
+    # Check email unique
+    if email != current_user.email:
+        exists = Usuario.query.filter_by(email=email).first()
+        if exists:
+            flash('Este email já está em uso.', 'error')
+            return redirect(url_for('perfil'))
+
+    current_user.nome = nome
+    current_user.email = email
+    db.session.commit()
+    flash('Perfil atualizado!', 'success')
+    return redirect(url_for('perfil'))
+
+
+@app.route('/perfil/senha', methods=['POST'])
+@login_required
+def alterar_senha():
+    senha_atual = request.form.get('senha_atual', '')
+    nova_senha = request.form.get('nova_senha', '')
+    confirmar = request.form.get('confirmar_senha', '')
+
+    if not current_user.check_senha(senha_atual):
+        flash('Senha atual incorreta.', 'error')
+        return redirect(url_for('perfil'))
+
+    if len(nova_senha) < 6:
+        flash('Nova senha deve ter pelo menos 6 caracteres.', 'error')
+        return redirect(url_for('perfil'))
+
+    if nova_senha != confirmar:
+        flash('Confirmação de senha não confere.', 'error')
+        return redirect(url_for('perfil'))
+
+    current_user.set_senha(nova_senha)
+    db.session.commit()
+    flash('Senha alterada com sucesso!', 'success')
+    return redirect(url_for('perfil'))
+
+
+# =============================================
+# TEMA
+# =============================================
+
+@app.route('/tema/toggle', methods=['POST'])
+@login_required
+def toggle_tema():
+    current_user.tema = 'light' if current_user.tema == 'dark' else 'dark'
+    db.session.commit()
+    return jsonify({'tema': current_user.tema})
+
+
+# =============================================
+# EXPORTAR CSV
+# =============================================
+
+@app.route('/exportar/csv')
+@login_required
+def exportar_csv():
+    mes = request.args.get('mes', None, type=int)
+    ano = request.args.get('ano', None, type=int)
+
+    query = Transacao.query.filter_by(usuario_id=current_user.id)
+    if mes and ano:
+        query = query.filter(
+            db.extract('month', Transacao.data) == mes,
+            db.extract('year', Transacao.data) == ano
+        )
+    elif ano:
+        query = query.filter(db.extract('year', Transacao.data) == ano)
+
+    transacoes = query.order_by(Transacao.data.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Data', 'Tipo', 'Valor', 'Categoria', 'Conta', 'Descrição'])
+
+    for t in transacoes:
+        writer.writerow([
+            t.data.strftime('%d/%m/%Y') if t.data else '',
+            t.tipo,
+            f'{t.valor:.2f}',
+            t.categoria_nome,
+            t.conta_rel.nome if t.conta_rel else '',
+            t.descricao or ''
+        ])
+
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    filename = f'transacoes_{ano or "todos"}'
+    if mes:
+        filename += f'_{mes:02d}'
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}.csv'
+    return response
+
+
+# =============================================
+# UPLOAD DE COMPROVANTES
+# =============================================
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route('/transacao/comprovante/<int:id>', methods=['POST'])
+@login_required
+def upload_comprovante(id):
+    transacao = Transacao.query.get_or_404(id)
+    if transacao.usuario_id != current_user.id:
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('dashboard'))
+
+    if 'comprovante' not in request.files:
+        flash('Nenhum arquivo selecionado.', 'error')
+        return redirect(url_for('dashboard'))
+
+    file = request.files['comprovante']
+    if file.filename == '':
+        flash('Nenhum arquivo selecionado.', 'error')
+        return redirect(url_for('dashboard'))
+
+    if file and allowed_file(file.filename):
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        filename = f'comp_{current_user.id}_{id}_{datetime.utcnow().strftime("%Y%m%d%H%M%S")}.{ext}'
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        transacao.comprovante = filename
+        db.session.commit()
+        flash('Comprovante enviado!', 'success')
+    else:
+        flash('Tipo de arquivo não permitido. Use: PNG, JPG, PDF, WebP.', 'error')
+
+    return redirect(url_for('dashboard'))
 
 
 # =============================================

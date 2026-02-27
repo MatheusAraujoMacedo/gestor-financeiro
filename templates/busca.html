@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% block title %}Busca - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section page-section-wide">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-search"></i> Busca de Transações</h1>
+            <p class="page-subtitle">Encontre qualquer transação com filtros avançados</p>
+        </div>
+    </div>
+
+    <!-- Search Form -->
+    <div class="search-card">
+        <form method="GET" action="{{ url_for('busca') }}" class="search-form">
+            <div class="search-main">
+                <div class="search-input-wrap">
+                    <i class="fas fa-search"></i>
+                    <input type="text" name="q" value="{{ q }}" placeholder="Buscar por descrição..."
+                        class="search-input" autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search"></i> Buscar
+                </button>
+            </div>
+            <div class="search-filters">
+                <div class="filter-group">
+                    <label>Tipo</label>
+                    <select name="tipo">
+                        <option value="">Todos</option>
+                        <option value="receita" {% if tipo=='receita' %}selected{% endif %}>Receita</option>
+                        <option value="despesa" {% if tipo=='despesa' %}selected{% endif %}>Despesa</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Data Início</label>
+                    <input type="date" name="data_inicio" value="{{ data_inicio }}">
+                </div>
+                <div class="filter-group">
+                    <label>Data Fim</label>
+                    <input type="date" name="data_fim" value="{{ data_fim }}">
+                </div>
+                <div class="filter-group">
+                    <label>Valor Mín (R$)</label>
+                    <input type="number" name="valor_min" step="0.01" value="{{ valor_min }}" placeholder="0.00">
+                </div>
+                <div class="filter-group">
+                    <label>Valor Máx (R$)</label>
+                    <input type="number" name="valor_max" step="0.01" value="{{ valor_max }}" placeholder="0.00">
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Results -->
+    {% if resultados %}
+    <div class="table-card">
+        <div class="table-header">
+            <h2><i class="fas fa-list"></i> Resultados</h2>
+            <span class="badge">{{ total }} encontrados</span>
+        </div>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Descrição</th>
+                        <th>Categoria</th>
+                        <th>Valor</th>
+                        <th>Data</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in resultados %}
+                    <tr class="fade-in-row">
+                        <td>
+                            <span class="type-badge type-{{ t.tipo }}">
+                                <i class="fas fa-arrow-{% if t.tipo == 'receita' %}up{% else %}down{% endif %}"></i>
+                                {{ t.tipo|capitalize }}
+                            </span>
+                        </td>
+                        <td class="td-desc">{{ t.descricao or '—' }}</td>
+                        <td>
+                            {% if t.categoria_rel %}
+                            <span class="cat-badge">
+                                <i class="fas {{ t.categoria_rel.icone }}" style="color: {{ t.categoria_rel.cor }}"></i>
+                                {{ t.categoria_nome }}
+                            </span>
+                            {% else %}
+                            <span class="cat-badge">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="td-valor {% if t.tipo == 'receita' %}text-green{% else %}text-red{% endif %}">
+                            {% if t.tipo == 'despesa' %}-{% endif %}{{ t.valor|brl }}
+                        </td>
+                        <td class="td-data">{{ t.data|data_br }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% elif q or tipo or data_inicio or data_fim or valor_min or valor_max %}
+    <div class="empty-state-page">
+        <div class="empty-icon"><i class="fas fa-search"></i></div>
+        <h3>Nenhum resultado encontrado</h3>
+        <p>Tente ajustar os filtros ou buscar por outro termo.</p>
+    </div>
+    {% else %}
+    <div class="empty-state-page">
+        <div class="empty-icon"><i class="fas fa-search"></i></div>
+        <h3>Pesquise suas transações</h3>
+        <p>Use a barra de busca e os filtros acima para encontrar transações específicas.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
