@@ -20,3 +20,9 @@ services:
         generateValue: true
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: CLOUDINARY_API_KEY
+        value: 439547935185919
+      - key: CLOUDINARY_API_SECRET
+        value: 3lPycV2JNER-wcV96W1l1sC4vmg
+      - key: CLOUDINARY_CLOUD_NAME
+        value: dxm88sfsc

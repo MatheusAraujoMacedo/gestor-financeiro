@@ -8,11 +8,21 @@ import json
 import csv
 import io
 import os
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 app = Flask(__name__)
 
 # Configurações para deploy / local
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gestor-financeiro-secret-key-2026')
+
+# Configuração do Cloudinary (usar variáveis de ambiente para a Cloud Name e chaves)
+cloudinary.config(
+  cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', ''),
+  api_key = os.environ.get('CLOUDINARY_API_KEY', '439547935185919'),
+  api_secret = os.environ.get('CLOUDINARY_API_SECRET', '3lPycV2JNER-wcV96W1l1sC4vmg')
+)
 
 db_url = os.environ.get('DATABASE_URL', 'sqlite:///gestor.db')
 if db_url.startswith("postgres://"):
@@ -316,6 +326,11 @@ class CartaoCredito(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(Usuario, int(user_id))
+
+
+# Garantir que as tabelas do banco de dados sejam criadas (útil para o Render / PostgreSQL)
+with app.app_context():
+    db.create_all()
 
 
 # =============================================
@@ -1503,12 +1518,18 @@ def upload_comprovante(id):
         return redirect(url_for('dashboard'))
 
     if file and allowed_file(file.filename):
-        ext = file.filename.rsplit('.', 1)[1].lower()
-        filename = f'comp_{current_user.id}_{id}_{datetime.utcnow().strftime("%Y%m%d%H%M%S")}.{ext}'
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        transacao.comprovante = filename
-        db.session.commit()
-        flash('Comprovante enviado!', 'success')
+        try:
+            # Enviar para o Cloudinary (detectando o tipo do arquivo automaticamente)
+            upload_result = cloudinary.uploader.upload(file, resource_type='auto')
+            
+            # Pegar a URL segura que o Cloudinary retornou
+            url_comprovante = upload_result.get('secure_url')
+            
+            transacao.comprovante = url_comprovante
+            db.session.commit()
+            flash('Comprovante enviado!', 'success')
+        except Exception as e:
+            flash(f'Erro no upload: {str(e)}', 'error')
     else:
         flash('Tipo de arquivo não permitido. Use: PNG, JPG, PDF, WebP.', 'error')
 
@@ -1539,6 +1560,4 @@ def format_data_br(value):
 # =============================================
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
