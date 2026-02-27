@@ -2,7 +2,12 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from sqlalchemy import text
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import random
 import calendar as cal_module
 import json
 import csv
@@ -60,6 +65,10 @@ class Usuario(UserMixin, db.Model):
     senha_hash = db.Column(db.String(256), nullable=False)
     tema = db.Column(db.String(10), default='dark')  # 'dark' ou 'light'
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Login por e-mail
+    codigo_verificacao = db.Column(db.String(6), nullable=True)
+    codigo_expiracao = db.Column(db.DateTime, nullable=True)
 
     # Relacionamentos
     transacoes = db.relationship('Transacao', backref='dono', lazy=True, cascade='all, delete-orphan')
@@ -331,11 +340,51 @@ def load_user(user_id):
 # Garantir que as tabelas do banco de dados sejam criadas (útil para o Render / PostgreSQL)
 with app.app_context():
     db.create_all()
+    # Adicionar colunas novas se não existirem
+    try:
+        db.session.execute(text('ALTER TABLE usuario ADD COLUMN codigo_verificacao VARCHAR(6)'))
+        db.session.execute(text('ALTER TABLE usuario ADD COLUMN codigo_expiracao TIMESTAMP'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 # =============================================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES DE E-MAIL E AUXILIARES
 # =============================================
+
+def enviar_email_verificacao(email_destino, codigo):
+    email_user = os.environ.get('EMAIL_USER', 'juninarroba48@gmail.com')
+    email_pass = os.environ.get('EMAIL_PASSWORD', 'swoy ujtl ulnl cjme')
+
+    if not email_user or not email_pass:
+        print("Erro: Credenciais de e-mail não configuradas (EMAIL_USER ou EMAIL_PASSWORD)")
+        return False
+
+    remetente = email_user
+    msg = MIMEMultipart()
+    msg['From'] = remetente
+    msg['To'] = email_destino
+    msg['Subject'] = 'Seu código de verificação - Gestor Financeiro'
+
+    corpo = f"""Olá,
+
+Seu código de verificação para acesso ao Gestor Financeiro é: {codigo}
+
+Este código expira em 10 minutos. Se você não solicitou este acesso, por favor ignore este e-mail.
+"""
+    msg.attach(MIMEText(corpo, 'plain'))
+
+    try:
+        servidor = smtplib.SMTP('smtp.gmail.com', 587)
+        servidor.starttls()
+        servidor.login(email_user, email_pass)
+        servidor.sendmail(remetente, email_destino, msg.as_string())
+        servidor.quit()
+        return True
+    except Exception as e:
+        print(f"Erro ao enviar e-mail: {e}")
+        return False
 
 def criar_categorias_padrao(usuario_id):
     """Cria categorias padrão para um novo usuário."""
@@ -403,6 +452,64 @@ def login():
             flash('Email ou senha incorretos.', 'error')
 
     return render_template('login.html')
+
+
+@app.route('/api/login/request_code', methods=['POST'])
+def api_request_code():
+    data = request.get_json()
+    if not data or 'email' not in data:
+        return jsonify({'status': 'error', 'message': 'E-mail não fornecido'}), 400
+    
+    email = data['email'].strip()
+    usuario = Usuario.query.filter_by(email=email).first()
+    
+    if not usuario:
+        return jsonify({'status': 'error', 'message': 'E-mail não encontrado no sistema'}), 404
+    
+    codigo = str(random.randint(100000, 999999))
+    expiracao = datetime.utcnow() + timedelta(minutes=10)
+    
+    usuario.codigo_verificacao = codigo
+    usuario.codigo_expiracao = expiracao
+    db.session.commit()
+    
+    sucesso = enviar_email_verificacao(usuario.email, codigo)
+    if sucesso:
+        return jsonify({'status': 'success', 'message': 'Código enviado com sucesso'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Erro ao enviar o e-mail. Verifique as configurações.'}), 500
+
+
+@app.route('/api/login/verify_code', methods=['POST'])
+def api_verify_code():
+    data = request.get_json()
+    if not data or 'email' not in data or 'codigo' not in data:
+        return jsonify({'status': 'error', 'message': 'E-mail ou código não fornecido'}), 400
+    
+    email = data['email'].strip()
+    codigo = data['codigo'].strip()
+    
+    usuario = Usuario.query.filter_by(email=email).first()
+    
+    if not usuario:
+        return jsonify({'status': 'error', 'message': 'Usuário não encontrado'}), 404
+        
+    if not usuario.codigo_verificacao or not usuario.codigo_expiracao:
+        return jsonify({'status': 'error', 'message': 'Nenhum código foi solicitado'}), 400
+        
+    if usuario.codigo_verificacao != codigo:
+        return jsonify({'status': 'error', 'message': 'Código incorreto'}), 400
+        
+    if datetime.utcnow() > usuario.codigo_expiracao:
+        return jsonify({'status': 'error', 'message': 'Código expirado. Solicite um novo.'}), 400
+        
+    # Sucesso
+    usuario.codigo_verificacao = None
+    usuario.codigo_expiracao = None
+    db.session.commit()
+    
+    login_user(usuario)
+    return jsonify({'status': 'success', 'message': 'Login realizado com sucesso'})
 
 
 @app.route('/cadastro', methods=['GET', 'POST'])

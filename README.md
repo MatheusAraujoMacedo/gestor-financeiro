@@ -51,6 +51,45 @@ Esse projeto nasceu com a ideia de transformar o “vou me organizar” em algo 
 
 ---
 
+## 🚀 Como executar o projeto localmente (Manual)
+
+Se você deseja rodar este projeto no seu próprio computador, siga o passo a passo abaixo:
+
+1. **Clone o repositório:**
+   ```bash
+   git clone https://github.com/MatheusAraujoMacedo/gestor-financeiro.git
+   cd gestor-financeiro
+   ```
+
+2. **Crie e ative um ambiente virtual (recomendado):**
+   - **No Windows:**
+     ```bash
+     python -m venv venv
+     venv\Scripts\activate
+     ```
+   - **No Linux/Mac:**
+     ```bash
+     python3 -m venv venv
+     source venv/bin/activate
+     ```
+
+3. **Instale as dependências:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Execute a aplicação:**
+   ```bash
+   python app.py
+   ```
+
+5. **Acesse no navegador:**
+   Abra o seu navegador e acesse: [http://127.0.0.1:5000](http://127.0.0.1:5000)
+
+> **Nota:** Por padrão, a aplicação usará o banco de dados local SQLite (`gestor.db`). Não é necessário configurar variáveis de ambiente complexas apenas para testar localmente.
+
+---
+
 ## 🧭 Roadmap (ideias futuras)
 
 - Relatórios mais completos (por período, por conta, por categoria)
