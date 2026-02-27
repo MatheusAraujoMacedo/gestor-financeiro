@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block title %}Categorias e Tags - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-tags"></i> Categorias e Tags</h1>
+            <p class="page-subtitle">Organize suas transações com categorias e tags</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-primary" onclick="openModal('addCatModal')">
+                <i class="fas fa-plus"></i> Nova Categoria
+            </button>
+            <button class="btn btn-glass" onclick="openModal('addTagModal')">
+                <i class="fas fa-plus"></i> Nova Tag
+            </button>
+        </div>
+    </div>
+
+    <!-- Categorias de Receita -->
+    <div class="section-card">
+        <div class="section-card-header">
+            <h2><i class="fas fa-arrow-up" style="color: var(--accent-green)"></i> Categorias de Receita</h2>
+        </div>
+        <div class="items-grid">
+            {% for cat in categorias if cat.tipo == 'receita' %}
+            <div class="item-chip">
+                <i class="fas {{ cat.icone }}" style="color: {{ cat.cor }}"></i>
+                <span>{{ cat.nome }}</span>
+                <form action="{{ url_for('excluir_categoria', id=cat.id) }}" method="POST" class="inline-form"
+                    onsubmit="return confirm('Excluir categoria {{ cat.nome }}?')">
+                    <button type="submit" class="chip-delete"><i class="fas fa-times"></i></button>
+                </form>
+            </div>
+            {% else %}
+            <p class="text-muted">Nenhuma categoria de receita</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Categorias de Despesa -->
+    <div class="section-card">
+        <div class="section-card-header">
+            <h2><i class="fas fa-arrow-down" style="color: var(--accent-red)"></i> Categorias de Despesa</h2>
+        </div>
+        <div class="items-grid">
+            {% for cat in categorias if cat.tipo == 'despesa' %}
+            <div class="item-chip">
+                <i class="fas {{ cat.icone }}" style="color: {{ cat.cor }}"></i>
+                <span>{{ cat.nome }}</span>
+                <form action="{{ url_for('excluir_categoria', id=cat.id) }}" method="POST" class="inline-form"
+                    onsubmit="return confirm('Excluir categoria {{ cat.nome }}?')">
+                    <button type="submit" class="chip-delete"><i class="fas fa-times"></i></button>
+                </form>
+            </div>
+            {% else %}
+            <p class="text-muted">Nenhuma categoria de despesa</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Tags -->
+    <div class="section-card">
+        <div class="section-card-header">
+            <h2><i class="fas fa-hashtag" style="color: var(--accent-blue)"></i> Tags</h2>
+        </div>
+        <div class="items-grid">
+            {% set user_tags = [] %}
+            {% for cat in categorias %}{% endfor %}
+            {% for tag in current_user.tags %}
+            <div class="item-chip" style="border-color: {{ tag.cor }}40">
+                <span class="tag-dot" style="background: {{ tag.cor }}"></span>
+                <span>{{ tag.nome }}</span>
+                <form action="{{ url_for('excluir_tag', id=tag.id) }}" method="POST" class="inline-form"
+                    onsubmit="return confirm('Excluir tag {{ tag.nome }}?')">
+                    <button type="submit" class="chip-delete"><i class="fas fa-times"></i></button>
+                </form>
+            </div>
+            {% else %}
+            <p class="text-muted">Nenhuma tag criada. Tags ajudam a filtrar transações.</p>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Modal: Nova Categoria -->
+<div class="modal-overlay" id="addCatModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-tag"></i> Nova Categoria</h2>
+            <button class="modal-close" onclick="closeModal('addCatModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('nova_categoria') }}" method="POST" class="modal-form">
+            <div class="form-group">
+                <label>Nome</label>
+                <input type="text" name="nome" placeholder="Ex: Alimentação, Salário..." required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Tipo</label>
+                    <select name="tipo" required>
+                        <option value="despesa">Despesa</option>
+                        <option value="receita">Receita</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cor</label>
+                    <input type="color" name="cor" value="#7c5cfc" class="color-input">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Ícone</label>
+                <select name="icone">
+                    <option value="fa-tag">🏷️ Tag</option>
+                    <option value="fa-utensils">🍽️ Alimentação</option>
+                    <option value="fa-car">🚗 Transporte</option>
+                    <option value="fa-house">🏠 Moradia</option>
+                    <option value="fa-heart-pulse">💊 Saúde</option>
+                    <option value="fa-graduation-cap">🎓 Educação</option>
+                    <option value="fa-gamepad">🎮 Lazer</option>
+                    <option value="fa-shirt">👕 Roupas</option>
+                    <option value="fa-money-bill-wave">💰 Salário</option>
+                    <option value="fa-laptop-code">💻 Freelance</option>
+                    <option value="fa-chart-line">📈 Investimento</option>
+                    <option value="fa-file-invoice">📄 Contas</option>
+                    <option value="fa-tv">📺 Streaming</option>
+                    <option value="fa-gift">🎁 Presente</option>
+                    <option value="fa-plane">✈️ Viagem</option>
+                    <option value="fa-paw">🐾 Pets</option>
+                    <option value="fa-receipt">🧾 Outros</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-check"></i> Criar Categoria
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Nova Tag -->
+<div class="modal-overlay" id="addTagModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-hashtag"></i> Nova Tag</h2>
+            <button class="modal-close" onclick="closeModal('addTagModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('nova_tag') }}" method="POST" class="modal-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nome da Tag</label>
+                    <input type="text" name="nome" placeholder="Ex: viagem-sp, emergência..." required>
+                </div>
+                <div class="form-group">
+                    <label>Cor</label>
+                    <input type="color" name="cor" value="#45b7d1" class="color-input">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-check"></i> Criar Tag
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

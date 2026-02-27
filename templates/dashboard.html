@@ -1,0 +1,506 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="dashboard">
+    <!-- Dashboard Header -->
+    <div class="dash-header">
+        <div>
+            <h1 class="dash-title">Olá, {{ current_user.nome.split()[0] }} <span class="wave">👋</span></h1>
+            <p class="dash-subtitle">Aqui está o resumo das suas finanças</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('addModal')">
+            <i class="fas fa-plus"></i> Nova Transação
+        </button>
+    </div>
+
+    <!-- Alerts: pending fixed expenses -->
+    {% if pendentes %}
+    <div class="alert-banner alert-warning">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span>
+            Você tem <strong>{{ pendentes|length }}</strong> despesa{{ 's' if pendentes|length > 1 }} fixa{{ 's' if
+            pendentes|length > 1 }}
+            {% set atrasadas = pendentes|selectattr('status_atual', 'equalto', 'atrasado')|list %}
+            {% if atrasadas %}(<span class="text-red">{{ atrasadas|length }} atrasada{{ 's' if atrasadas|length > 1
+                }}</span>){% endif %}
+            —
+            <a href="{{ url_for('despesas_fixas') }}">Ver detalhes</a>
+        </span>
+    </div>
+    {% endif %}
+
+    <!-- Stat Cards -->
+    <div class="stats-grid">
+        <div class="stat-card stat-card-balance">
+            <div class="stat-icon">
+                <i class="fas fa-wallet"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Saldo Total (Contas)</span>
+                <span class="stat-value {% if saldo_total >= 0 %}text-green{% else %}text-red{% endif %}">
+                    {{ saldo_total|brl }}
+                </span>
+            </div>
+        </div>
+        <div class="stat-card stat-card-income">
+            <div class="stat-icon stat-icon-green">
+                <i class="fas fa-arrow-up"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Receitas</span>
+                <span class="stat-value text-green">{{ total_receitas|brl }}</span>
+            </div>
+        </div>
+        <div class="stat-card stat-card-expense">
+            <div class="stat-icon stat-icon-red">
+                <i class="fas fa-arrow-down"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Despesas</span>
+                <span class="stat-value text-red">{{ total_despesas|brl }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(255, 217, 61, 0.15); color: #ffd93d;">
+                <i class="fas fa-scale-balanced"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Balanço do Período</span>
+                <span class="stat-value {% if saldo >= 0 %}text-green{% else %}text-red{% endif %}">
+                    {{ saldo|brl }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Budget Progress (if any) -->
+    {% if orcamentos %}
+    <div class="section-card">
+        <div class="section-card-header">
+            <h2><i class="fas fa-bullseye"></i> Orçamentos do Mês</h2>
+            <a href="{{ url_for('orcamentos') }}" class="btn btn-glass btn-sm">Ver todos</a>
+        </div>
+        <div class="budget-grid">
+            {% for orc in orcamentos %}
+            <div class="budget-item">
+                <div class="budget-info">
+                    <span class="budget-cat">
+                        {% if orc.categoria_rel %}
+                        <i class="fas {{ orc.categoria_rel.icone }}" style="color: {{ orc.categoria_rel.cor }}"></i>
+                        {% endif %}
+                        {{ orc.categoria_rel.nome if orc.categoria_rel else 'Categoria' }}
+                    </span>
+                    <span class="budget-values">{{ orc.valor_gasto|brl }} / {{ orc.valor_limite|brl }}</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill {% if orc.percentual >= 90 %}progress-danger{% elif orc.percentual >= 70 %}progress-warning{% endif %}"
+                        style="width: {{ orc.percentual }}%">
+                    </div>
+                </div>
+                <span
+                    class="budget-pct {% if orc.percentual >= 90 %}text-red{% elif orc.percentual >= 70 %}text-yellow{% else %}text-green{% endif %}">
+                    {{ orc.percentual }}%
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Filters + Chart Row -->
+    <div class="dash-row">
+        <!-- Filters & Table -->
+        <div class="dash-main">
+            <!-- Filters -->
+            <div class="filters-card">
+                <form class="filters-form" method="GET" action="{{ url_for('dashboard') }}">
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar"></i> Mês</label>
+                        <select name="mes">
+                            <option value="">Todos</option>
+                            {% for m, nome_mes in [(1,'Jan'), (2,'Fev'), (3,'Mar'), (4,'Abr'), (5,'Mai'), (6,'Jun'),
+                            (7,'Jul'), (8,'Ago'), (9,'Set'), (10,'Out'), (11,'Nov'), (12,'Dez')] %}
+                            <option value="{{ m }}" {% if mes_filtro==m|string %}selected{% endif %}>{{ nome_mes }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar-alt"></i> Ano</label>
+                        <select name="ano">
+                            <option value="">Todos</option>
+                            {% for a in anos %}
+                            <option value="{{ a }}" {% if ano_filtro==a|string %}selected{% endif %}>{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-tag"></i> Categoria</label>
+                        <select name="categoria">
+                            <option value="">Todas</option>
+                            {% for cat in categorias %}
+                            <option value="{{ cat.id }}" {% if categoria_filtro==cat.id|string %}selected{% endif %}>{{
+                                cat.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-wallet"></i> Conta</label>
+                        <select name="conta">
+                            <option value="">Todas</option>
+                            {% for c in contas %}
+                            <option value="{{ c.id }}" {% if conta_filtro==c.id|string %}selected{% endif %}>{{ c.nome
+                                }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-glass btn-sm">
+                        <i class="fas fa-filter"></i> Filtrar
+                    </button>
+                </form>
+            </div>
+
+            <!-- Transactions Table -->
+            <div class="table-card">
+                <div class="table-header">
+                    <h2><i class="fas fa-list"></i> Transações</h2>
+                    <span class="badge">{{ transacoes|length }} registros</span>
+                </div>
+                {% if transacoes %}
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Descrição</th>
+                                <th>Categoria</th>
+                                <th>Conta</th>
+                                <th>Valor</th>
+                                <th>Data</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in transacoes %}
+                            <tr class="fade-in-row">
+                                <td>
+                                    <span class="type-badge type-{{ t.tipo }}">
+                                        <i
+                                            class="fas fa-arrow-{% if t.tipo == 'receita' %}up{% else %}down{% endif %}"></i>
+                                        {{ t.tipo|capitalize }}
+                                    </span>
+                                </td>
+                                <td class="td-desc">
+                                    {{ t.descricao or '—' }}
+                                    {% if t.tags %}
+                                    <div class="td-tags">
+                                        {% for tag in t.tags %}
+                                        <span class="mini-tag"
+                                            style="background: {{ tag.cor }}20; color: {{ tag.cor }}">{{ tag.nome
+                                            }}</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if t.categoria_rel %}
+                                    <span class="cat-badge">
+                                        <i class="fas {{ t.categoria_rel.icone }}"
+                                            style="color: {{ t.categoria_rel.cor }}"></i>
+                                        {{ t.categoria_nome }}
+                                    </span>
+                                    {% else %}
+                                    <span class="cat-badge">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if t.conta %}
+                                    <span class="cat-badge">
+                                        <i class="fas {{ t.conta.icone }}" style="color: {{ t.conta.cor }}"></i>
+                                        {{ t.conta_nome }}
+                                    </span>
+                                    {% else %}
+                                    <span class="cat-badge">—</span>
+                                    {% endif %}
+                                </td>
+                                <td
+                                    class="td-valor {% if t.tipo == 'receita' %}text-green{% else %}text-red{% endif %}">
+                                    {% if t.tipo == 'despesa' %}-{% endif %}{{ t.valor|brl }}
+                                </td>
+                                <td class="td-data">{{ t.data|data_br }}</td>
+                                <td class="td-actions">
+                                    <button class="btn-icon btn-icon-edit" title="Editar"
+                                        onclick="openEditModal({{ t.id }}, '{{ t.tipo }}', {{ t.valor }}, '{{ t.categoria_id or '' }}', '{{ t.conta_id or '' }}', '{{ t.descricao|default('', true)|e }}', '{{ t.data.strftime('%Y-%m-%d') }}', {{ t.tags|map(attribute='id')|list|tojson }})">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <form action="{{ url_for('excluir_transacao', id=t.id) }}" method="POST"
+                                        class="inline-form" onsubmit="return confirm('Excluir esta transação?')">
+                                        <button type="submit" class="btn-icon btn-icon-delete" title="Excluir">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="fas fa-receipt"></i></div>
+                    <h3>Nenhuma transação encontrada</h3>
+                    <p>Comece adicionando sua primeira receita ou despesa.</p>
+                    <button class="btn btn-primary" onclick="openModal('addModal')">
+                        <i class="fas fa-plus"></i> Adicionar Transação
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="dash-sidebar">
+            <!-- Accounts -->
+            <div class="chart-card">
+                <h2><i class="fas fa-wallet"></i> Minhas Contas</h2>
+                {% if contas %}
+                <div class="accounts-list">
+                    {% for c in contas %}
+                    <div class="account-item">
+                        <div class="account-icon" style="background: {{ c.cor }}20; color: {{ c.cor }}">
+                            <i class="fas {{ c.icone }}"></i>
+                        </div>
+                        <div class="account-info">
+                            <span class="account-name">{{ c.nome }}</span>
+                            <span class="account-type">{{ c.tipo_label }}</span>
+                        </div>
+                        <span
+                            class="account-balance {% if c.saldo_atual >= 0 %}text-green{% else %}text-red{% endif %}">
+                            {{ c.saldo_atual|brl }}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <a href="{{ url_for('contas') }}" class="btn btn-glass btn-sm btn-block" style="margin-top: 12px">
+                    <i class="fas fa-cog"></i> Gerenciar Contas
+                </a>
+                {% else %}
+                <div class="chart-empty">
+                    <i class="fas fa-wallet"></i>
+                    <p>Nenhuma conta cadastrada</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Chart -->
+            <div class="chart-card">
+                <h2><i class="fas fa-chart-pie"></i> Despesas por Categoria</h2>
+                {% if categorias_grafico %}
+                <div class="chart-container">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+                {% else %}
+                <div class="chart-empty">
+                    <i class="fas fa-chart-pie"></i>
+                    <p>Adicione despesas para ver o gráfico</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Modal: Nova Transação -->
+<div class="modal-overlay" id="addModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-plus-circle"></i> Nova Transação</h2>
+            <button class="modal-close" onclick="closeModal('addModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('nova_transacao') }}" method="POST" class="modal-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="add-tipo">Tipo</label>
+                    <select id="add-tipo" name="tipo" required>
+                        <option value="receita">Receita</option>
+                        <option value="despesa">Despesa</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="add-valor">Valor (R$)</label>
+                    <input type="number" id="add-valor" name="valor" step="0.01" min="0.01" placeholder="0,00" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="add-cat">Categoria</label>
+                    <select id="add-cat" name="categoria_id">
+                        <option value="">Selecione...</option>
+                        {% for cat in categorias %}
+                        <option value="{{ cat.id }}" data-tipo="{{ cat.tipo }}">{{ cat.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="add-conta">Conta</label>
+                    <select id="add-conta" name="conta_id">
+                        <option value="">Selecione...</option>
+                        {% for c in contas %}
+                        <option value="{{ c.id }}">{{ c.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="add-data">Data</label>
+                    <input type="date" id="add-data" name="data" required>
+                </div>
+                <div class="form-group">
+                    <label>Tags</label>
+                    <div class="tags-select">
+                        {% for tag in tags %}
+                        <label class="tag-option">
+                            <input type="checkbox" name="tags" value="{{ tag.id }}">
+                            <span class="tag-chip" style="--tag-color: {{ tag.cor }}">{{ tag.nome }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="add-desc">Descrição (opcional)</label>
+                <input type="text" id="add-desc" name="descricao" placeholder="Breve descrição">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-check"></i> Salvar Transação
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Editar Transação -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-pen"></i> Editar Transação</h2>
+            <button class="modal-close" onclick="closeModal('editModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="editForm" method="POST" class="modal-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="edit-tipo">Tipo</label>
+                    <select id="edit-tipo" name="tipo" required>
+                        <option value="receita">Receita</option>
+                        <option value="despesa">Despesa</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-valor">Valor (R$)</label>
+                    <input type="number" id="edit-valor" name="valor" step="0.01" min="0.01" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="edit-cat">Categoria</label>
+                    <select id="edit-cat" name="categoria_id">
+                        <option value="">Selecione...</option>
+                        {% for cat in categorias %}
+                        <option value="{{ cat.id }}">{{ cat.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-conta">Conta</label>
+                    <select id="edit-conta" name="conta_id">
+                        <option value="">Selecione...</option>
+                        {% for c in contas %}
+                        <option value="{{ c.id }}">{{ c.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="edit-data">Data</label>
+                    <input type="date" id="edit-data" name="data" required>
+                </div>
+                <div class="form-group">
+                    <label>Tags</label>
+                    <div class="tags-select">
+                        {% for tag in tags %}
+                        <label class="tag-option">
+                            <input type="checkbox" name="tags" value="{{ tag.id }}" class="edit-tag-checkbox">
+                            <span class="tag-chip" style="--tag-color: {{ tag.cor }}">{{ tag.nome }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="edit-desc">Descrição</label>
+                <input type="text" id="edit-desc" name="descricao">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-save"></i> Atualizar
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    document.getElementById('add-data').valueAsDate = new Date();
+
+    {% if categorias_grafico %}
+    const chartColors = [
+        '#7c5cfc', '#00d68f', '#ff6b6b', '#ffd93d', '#4ecdc4',
+        '#45b7d1', '#f093fb', '#ff8a5c', '#25cc97', '#6c5ce7'
+    ];
+    const ctx = document.getElementById('categoryChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: {{ categorias_grafico.keys() | list | tojson }},
+        datasets: [{
+            data: {{ categorias_grafico.values() | list | tojson }},
+        backgroundColor: chartColors.slice(0, {{ categorias_grafico| length }}),
+        borderColor: 'rgba(15, 15, 30, 0.8)',
+        borderWidth: 3,
+        hoverOffset: 8
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    color: '#a0a3bd', padding: 16,
+                    font: { family: 'Inter', size: 12 },
+                    usePointStyle: true, pointStyleWidth: 12
+                }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(15, 15, 30, 0.95)',
+                titleColor: '#fff', bodyColor: '#a0a3bd',
+                borderColor: 'rgba(124, 92, 252, 0.3)', borderWidth: 1, padding: 12,
+                callbacks: {
+                    label: function (ctx) {
+                        const val = ctx.parsed;
+                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                        return ` R$ ${val.toFixed(2).replace('.', ',')} (${((val / total) * 100).toFixed(1)}%)`;
+                    }
+                }
+            }
+        },
+        cutout: '65%'
+    }
+    });
+    {% endif %}
+</script>
+{% endblock %}

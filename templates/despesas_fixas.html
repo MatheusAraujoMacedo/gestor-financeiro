@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+{% block title %}Despesas Fixas - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-file-invoice-dollar"></i> Despesas Fixas</h1>
+            <p class="page-subtitle">Gerencie suas contas mensais e despesas recorrentes</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('addDespesaModal')">
+            <i class="fas fa-plus"></i> Nova Despesa Fixa
+        </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid stats-grid-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(124, 92, 252, 0.15); color: #7c5cfc;">
+                <i class="fas fa-receipt"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Total Fixo / Mês</span>
+                <span class="stat-value">{{ total_fixo|brl }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-green">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Pago este Mês</span>
+                <span class="stat-value text-green">{{ total_pago|brl }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-red">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Pendente</span>
+                <span class="stat-value text-red">{{ total_pendente|brl }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- List -->
+    {% if despesas %}
+    <div class="table-card">
+        <div class="table-header">
+            <h2><i class="fas fa-list"></i> Suas Despesas Fixas</h2>
+            <span class="badge">{{ despesas|length }} cadastradas</span>
+        </div>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Categoria</th>
+                        <th>Valor</th>
+                        <th>Vencimento</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in despesas %}
+                    <tr class="fade-in-row">
+                        <td>
+                            <strong>{{ d.nome }}</strong>
+                            {% if d.conta %}
+                            <br><small class="text-muted"><i class="fas {{ d.conta.icone }}"></i> {{ d.conta.nome
+                                }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if d.categoria_rel %}
+                            <span class="cat-badge">
+                                <i class="fas {{ d.categoria_rel.icone }}" style="color: {{ d.categoria_rel.cor }}"></i>
+                                {{ d.categoria_nome }}
+                            </span>
+                            {% else %}
+                            <span class="cat-badge">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="td-valor text-red">{{ d.valor|brl }}</td>
+                        <td>Todo dia <strong>{{ d.dia_vencimento }}</strong></td>
+                        <td>
+                            {% set status = d.status_atual %}
+                            <span class="status-badge status-{{ status }}">
+                                {% if status == 'pago' %}
+                                <i class="fas fa-check-circle"></i> Pago
+                                {% elif status == 'atrasado' %}
+                                <i class="fas fa-exclamation-circle"></i> Atrasado
+                                {% elif status == 'proximo' %}
+                                <i class="fas fa-clock"></i> Próximo
+                                {% else %}
+                                <i class="fas fa-hourglass-half"></i> Pendente
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td class="td-actions">
+                            {% if not d.pago_no_mes(hoje.year, hoje.month) %}
+                            <form action="{{ url_for('pagar_despesa_fixa', id=d.id) }}" method="POST"
+                                class="inline-form">
+                                <button type="submit" class="btn btn-sm btn-primary" title="Marcar como paga">
+                                    <i class="fas fa-check"></i> Pagar
+                                </button>
+                            </form>
+                            {% endif %}
+                            <form action="{{ url_for('excluir_despesa_fixa', id=d.id) }}" method="POST"
+                                class="inline-form" onsubmit="return confirm('Excluir {{ d.nome }}?')">
+                                <button type="submit" class="btn-icon btn-icon-delete" title="Excluir">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state-page">
+        <div class="empty-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <h3>Nenhuma despesa fixa cadastrada</h3>
+        <p>Cadastre contas como aluguel, internet, streaming, etc.</p>
+        <button class="btn btn-primary" onclick="openModal('addDespesaModal')">
+            <i class="fas fa-plus"></i> Cadastrar Despesa Fixa
+        </button>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Modal -->
+<div class="modal-overlay" id="addDespesaModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-file-invoice-dollar"></i> Nova Despesa Fixa</h2>
+            <button class="modal-close" onclick="closeModal('addDespesaModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('nova_despesa_fixa') }}" method="POST" class="modal-form">
+            <div class="form-group">
+                <label>Nome da Despesa</label>
+                <input type="text" name="nome" placeholder="Ex: Aluguel, Internet, Netflix..." required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Valor (R$)</label>
+                    <input type="number" name="valor" step="0.01" min="0.01" placeholder="0,00" required>
+                </div>
+                <div class="form-group">
+                    <label>Dia do Vencimento</label>
+                    <input type="number" name="dia_vencimento" min="1" max="31" placeholder="1-31" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Categoria</label>
+                    <select name="categoria_id">
+                        <option value="">Selecione...</option>
+                        {% for cat in categorias if cat.tipo == 'despesa' %}
+                        <option value="{{ cat.id }}">{{ cat.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Conta de Pagamento</label>
+                    <select name="conta_id">
+                        <option value="">Selecione...</option>
+                        {% for c in contas %}
+                        <option value="{{ c.id }}">{{ c.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-check"></i> Cadastrar
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

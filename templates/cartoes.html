@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% block title %}Cartões de Crédito - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-credit-card"></i> Cartões de Crédito</h1>
+            <p class="page-subtitle">Gerencie seus cartões, faturas e limites</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('addCartaoModal')">
+            <i class="fas fa-plus"></i> Novo Cartão
+        </button>
+    </div>
+
+    {% if cartoes %}
+    <div class="cards-grid">
+        {% for c in cartoes %}
+        <div class="credit-card-widget">
+            <!-- Card visual -->
+            <div class="cc-visual" style="background: linear-gradient(135deg, {{ c.cor }}, {{ c.cor }}99)">
+                <div class="cc-visual-top">
+                    <i class="fab {{ c.bandeira_icone }} cc-brand-icon"></i>
+                    <span class="cc-brand-name">{{ c.bandeira }}</span>
+                </div>
+                <div class="cc-visual-middle">
+                    <span class="cc-name">{{ c.nome }}</span>
+                </div>
+                <div class="cc-visual-bottom">
+                    <div>
+                        <span class="cc-label">Fechamento</span>
+                        <span class="cc-value">Dia {{ c.dia_fechamento }}</span>
+                    </div>
+                    <div>
+                        <span class="cc-label">Vencimento</span>
+                        <span class="cc-value">Dia {{ c.dia_vencimento }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card info -->
+            <div class="cc-info">
+                <div class="cc-info-row">
+                    <span>Fatura Atual</span>
+                    <span
+                        class="{% if c.percentual_usado >= 80 %}text-red{% elif c.percentual_usado >= 50 %}text-yellow{% else %}text-green{% endif %}"
+                        style="font-weight: 700; font-size: 1.1rem">
+                        {{ c.fatura_atual|brl }}
+                    </span>
+                </div>
+                <div class="progress-bar progress-bar-lg">
+                    <div class="progress-fill {% if c.percentual_usado >= 80 %}progress-danger{% elif c.percentual_usado >= 50 %}progress-warning{% endif %}"
+                        style="width: {{ c.percentual_usado }}%"></div>
+                </div>
+                <div class="cc-info-row cc-info-row-sm">
+                    <span>{{ c.percentual_usado }}% do limite usado</span>
+                    <span>Limite: {{ c.limite|brl }}</span>
+                </div>
+                <div class="cc-info-row">
+                    <span>Disponível</span>
+                    <span class="text-green" style="font-weight: 600;">{{ c.limite_disponivel|brl }}</span>
+                </div>
+                <div class="cc-actions">
+                    <form action="{{ url_for('excluir_cartao', id=c.id) }}" method="POST"
+                        onsubmit="return confirm('Excluir cartão {{ c.nome }}?')">
+                        <button type="submit" class="btn btn-glass btn-sm">
+                            <i class="fas fa-trash"></i> Excluir
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state-page">
+        <div class="empty-icon"><i class="fas fa-credit-card"></i></div>
+        <h3>Nenhum cartão cadastrado</h3>
+        <p>Cadastre seus cartões de crédito para acompanhar faturas e limites.</p>
+        <button class="btn btn-primary" onclick="openModal('addCartaoModal')">
+            <i class="fas fa-plus"></i> Cadastrar Cartão
+        </button>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Modal -->
+<div class="modal-overlay" id="addCartaoModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-credit-card"></i> Novo Cartão</h2>
+            <button class="modal-close" onclick="closeModal('addCartaoModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('novo_cartao') }}" method="POST" class="modal-form">
+            <div class="form-group">
+                <label>Nome do Cartão</label>
+                <input type="text" name="nome" placeholder="Ex: Nubank, Inter, C6..." required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Bandeira</label>
+                    <select name="bandeira" required>
+                        <option value="Visa">Visa</option>
+                        <option value="Mastercard">Mastercard</option>
+                        <option value="Elo">Elo</option>
+                        <option value="Amex">American Express</option>
+                        <option value="Hipercard">Hipercard</option>
+                        <option value="Outro">Outro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Limite (R$)</label>
+                    <input type="number" name="limite" step="0.01" min="1" placeholder="Ex: 5000.00" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Dia do Fechamento</label>
+                    <input type="number" name="dia_fechamento" min="1" max="31" placeholder="1-31" required>
+                </div>
+                <div class="form-group">
+                    <label>Dia do Vencimento</label>
+                    <input type="number" name="dia_vencimento" min="1" max="31" placeholder="1-31" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Cor do Cartão</label>
+                <input type="color" name="cor" value="#7c5cfc" class="color-input">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-credit-card"></i> Cadastrar Cartão
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+{% block title %}Metas Financeiras - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-flag-checkered"></i> Metas Financeiras</h1>
+            <p class="page-subtitle">Defina objetivos e acompanhe seu progresso de poupança</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('addMetaModal')">
+            <i class="fas fa-plus"></i> Nova Meta
+        </button>
+    </div>
+
+    <!-- Stats -->
+    {% if metas_ativas %}
+    <div class="stats-grid stats-grid-2">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(124, 92, 252, 0.15); color: #7c5cfc;">
+                <i class="fas fa-flag"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Total das Metas</span>
+                <span class="stat-value">{{ total_alvo|brl }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-green">
+                <i class="fas fa-piggy-bank"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Já Acumulado</span>
+                <span class="stat-value text-green">{{ total_acumulado|brl }}</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Active Goals -->
+    {% if metas_ativas %}
+    <div class="goals-grid">
+        {% for meta in metas_ativas %}
+        <div class="goal-card" style="--goal-color: {{ meta.cor }}">
+            <div class="goal-card-header">
+                <div class="goal-card-icon" style="background: {{ meta.cor }}20; color: {{ meta.cor }}">
+                    <i class="fas {{ meta.icone }}"></i>
+                </div>
+                <div class="goal-card-title">
+                    <h3>{{ meta.nome }}</h3>
+                    {% if meta.descricao %}
+                    <p class="goal-desc">{{ meta.descricao }}</p>
+                    {% endif %}
+                </div>
+                <form action="{{ url_for('excluir_meta', id=meta.id) }}" method="POST" class="inline-form"
+                    onsubmit="return confirm('Excluir meta {{ meta.nome }}?')">
+                    <button type="submit" class="btn-icon btn-icon-delete btn-icon-sm"><i
+                            class="fas fa-trash"></i></button>
+                </form>
+            </div>
+
+            <div class="goal-card-values">
+                <span class="goal-current">{{ meta.valor_atual|brl }}</span>
+                <span class="goal-target">de {{ meta.valor_alvo|brl }}</span>
+            </div>
+
+            <div class="progress-bar progress-bar-lg">
+                <div class="progress-fill" style="width: {{ meta.percentual }}%; background: {{ meta.cor }}"></div>
+            </div>
+
+            <div class="goal-card-footer">
+                <span style="color: {{ meta.cor }}; font-weight: 600;">{{ meta.percentual }}%</span>
+                {% if meta.dias_restantes is not none %}
+                <span class="text-muted">
+                    <i class="fas fa-clock"></i>
+                    {% if meta.dias_restantes == 0 %}
+                    Hoje é o prazo!
+                    {% elif meta.dias_restantes == 1 %}
+                    1 dia restante
+                    {% else %}
+                    {{ meta.dias_restantes }} dias restantes
+                    {% endif %}
+                </span>
+                {% endif %}
+                <span class="text-muted">Falta: {{ meta.restante|brl }}</span>
+            </div>
+
+            <!-- Deposit form -->
+            <form action="{{ url_for('depositar_meta', id=meta.id) }}" method="POST" class="goal-deposit-form">
+                <input type="number" name="valor" step="0.01" min="0.01" placeholder="Quanto depositar?" required>
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="fas fa-plus"></i> Depositar
+                </button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state-page">
+        <div class="empty-icon"><i class="fas fa-flag-checkered"></i></div>
+        <h3>Nenhuma meta ativa</h3>
+        <p>Crie uma meta para guardar dinheiro: viagem, carro, reserva de emergência...</p>
+        <button class="btn btn-primary" onclick="openModal('addMetaModal')">
+            <i class="fas fa-plus"></i> Criar Meta
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- Completed Goals -->
+    {% if metas_concluidas %}
+    <div class="section-card" style="margin-top: 24px;">
+        <div class="section-card-header">
+            <h2><i class="fas fa-trophy" style="color: var(--accent-yellow)"></i> Metas Concluídas 🎉</h2>
+        </div>
+        <div class="items-grid">
+            {% for meta in metas_concluidas %}
+            <div class="item-chip" style="border-color: {{ meta.cor }}40; background: {{ meta.cor }}08">
+                <i class="fas fa-check-circle" style="color: var(--accent-green)"></i>
+                <span><strong>{{ meta.nome }}</strong> — {{ meta.valor_alvo|brl }}</span>
+                <form action="{{ url_for('excluir_meta', id=meta.id) }}" method="POST" class="inline-form"
+                    onsubmit="return confirm('Excluir meta concluída?')">
+                    <button type="submit" class="chip-delete"><i class="fas fa-times"></i></button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Modal: Nova Meta -->
+<div class="modal-overlay" id="addMetaModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-flag"></i> Nova Meta</h2>
+            <button class="modal-close" onclick="closeModal('addMetaModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('nova_meta') }}" method="POST" class="modal-form">
+            <div class="form-group">
+                <label>Nome da Meta</label>
+                <input type="text" name="nome" placeholder="Ex: Viagem para Europa, Reserva de emergência..." required>
+            </div>
+            <div class="form-group">
+                <label>Descrição (opcional)</label>
+                <input type="text" name="descricao" placeholder="Breve descrição do objetivo">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Valor Alvo (R$)</label>
+                    <input type="number" name="valor_alvo" step="0.01" min="1" placeholder="Ex: 5000.00" required>
+                </div>
+                <div class="form-group">
+                    <label>Prazo (opcional)</label>
+                    <input type="date" name="prazo">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Cor</label>
+                    <input type="color" name="cor" value="#7c5cfc" class="color-input">
+                </div>
+                <div class="form-group">
+                    <label>Ícone</label>
+                    <select name="icone">
+                        <option value="fa-bullseye">🎯 Alvo</option>
+                        <option value="fa-plane">✈️ Viagem</option>
+                        <option value="fa-car">🚗 Carro</option>
+                        <option value="fa-house">🏠 Casa</option>
+                        <option value="fa-graduation-cap">🎓 Educação</option>
+                        <option value="fa-laptop">💻 Tecnologia</option>
+                        <option value="fa-piggy-bank">🐷 Poupança</option>
+                        <option value="fa-shield">🛡️ Emergência</option>
+                        <option value="fa-ring">💍 Casamento</option>
+                        <option value="fa-heart">❤️ Saúde</option>
+                        <option value="fa-gift">🎁 Presente</option>
+                        <option value="fa-chart-line">📈 Investimento</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-flag"></i> Criar Meta
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

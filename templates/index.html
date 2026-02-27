@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% block title %}FinançasPro - Controle Financeiro Inteligente{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero">
+    <div class="hero-bg-animation"></div>
+    <div class="hero-content">
+        <div class="hero-badge">
+            <i class="fas fa-bolt"></i> Controle Financeiro Inteligente
+        </div>
+        <h1 class="hero-title">
+            Domine suas <span class="gradient-text">finanças</span> com clareza total
+        </h1>
+        <p class="hero-subtitle">
+            Acompanhe receitas, despesas e investimentos em um dashboard poderoso.
+            Tome decisões financeiras inteligentes com dados em tempo real.
+        </p>
+        <div class="hero-actions">
+            <a href="{{ url_for('cadastro') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-rocket"></i> Começar Grátis
+            </a>
+            <a href="{{ url_for('login') }}" class="btn btn-glass btn-lg">
+                <i class="fas fa-sign-in-alt"></i> Já tenho conta
+            </a>
+        </div>
+        <div class="hero-stats">
+            <div class="hero-stat">
+                <span class="hero-stat-number">100%</span>
+                <span class="hero-stat-label">Gratuito</span>
+            </div>
+            <div class="hero-stat-divider"></div>
+            <div class="hero-stat">
+                <span class="hero-stat-number">Seguro</span>
+                <span class="hero-stat-label">Dados protegidos</span>
+            </div>
+            <div class="hero-stat-divider"></div>
+            <div class="hero-stat">
+                <span class="hero-stat-number">Fácil</span>
+                <span class="hero-stat-label">Interface intuitiva</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section class="features" id="features">
+    <div class="section-container">
+        <div class="section-header">
+            <h2 class="section-title">Tudo que você precisa para suas finanças</h2>
+            <p class="section-subtitle">Ferramentas poderosas para acompanhar cada centavo</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon feature-icon-green">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <h3>Dashboard Inteligente</h3>
+                <p>Visualize suas finanças com gráficos dinâmicos e resumos em tempo real. Acompanhe seu saldo, receitas
+                    e despesas.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon feature-icon-purple">
+                    <i class="fas fa-tags"></i>
+                </div>
+                <h3>Categorias Flexíveis</h3>
+                <p>Organize transações por categorias personalizadas. Filtre por mês, ano e categoria para análises
+                    detalhadas.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon feature-icon-blue">
+                    <i class="fas fa-shield-halved"></i>
+                </div>
+                <h3>Segurança Total</h3>
+                <p>Suas senhas são criptografadas e seus dados ficam protegidos. Acesse de qualquer dispositivo com
+                    tranquilidade.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="cta-section">
+    <div class="section-container">
+        <div class="cta-card">
+            <h2>Pronto para controlar suas finanças?</h2>
+            <p>Crie sua conta gratuita e comece a ter clareza financeira hoje mesmo.</p>
+            <a href="{{ url_for('cadastro') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-arrow-right"></i> Criar Conta Grátis
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}

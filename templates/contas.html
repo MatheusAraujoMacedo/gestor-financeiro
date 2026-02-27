@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block title %}Minhas Contas - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-wallet"></i> Minhas Contas</h1>
+            <p class="page-subtitle">Gerencie suas contas bancárias e carteiras</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('addContaModal')">
+            <i class="fas fa-plus"></i> Nova Conta
+        </button>
+    </div>
+
+    {% if contas %}
+    <div class="cards-grid">
+        {% for c in contas %}
+        <div class="account-card">
+            <div class="account-card-header" style="border-left: 4px solid {{ c.cor }}">
+                <div class="account-card-icon" style="background: {{ c.cor }}20; color: {{ c.cor }}">
+                    <i class="fas {{ c.icone }}"></i>
+                </div>
+                <div>
+                    <h3>{{ c.nome }}</h3>
+                    <span class="account-card-type">{{ c.tipo_label }}</span>
+                </div>
+            </div>
+            <div class="account-card-body">
+                <div class="account-card-row">
+                    <span>Saldo Inicial</span>
+                    <span>{{ c.saldo_inicial|brl }}</span>
+                </div>
+                <div class="account-card-row">
+                    <span>Saldo Atual</span>
+                    <span class="{% if c.saldo_atual >= 0 %}text-green{% else %}text-red{% endif %}"
+                        style="font-weight: 700; font-size: 1.1rem">
+                        {{ c.saldo_atual|brl }}
+                    </span>
+                </div>
+                <div class="account-card-row">
+                    <span>Transações</span>
+                    <span>{{ c.transacoes|length }}</span>
+                </div>
+            </div>
+            <div class="account-card-actions">
+                <form action="{{ url_for('excluir_conta', id=c.id) }}" method="POST"
+                    onsubmit="return confirm('Excluir esta conta e desvincular transações?')">
+                    <button type="submit" class="btn btn-glass btn-sm">
+                        <i class="fas fa-trash"></i> Excluir
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state-page">
+        <div class="empty-icon"><i class="fas fa-wallet"></i></div>
+        <h3>Nenhuma conta cadastrada</h3>
+        <p>Crie sua primeira conta para organizar suas finanças.</p>
+        <button class="btn btn-primary" onclick="openModal('addContaModal')">
+            <i class="fas fa-plus"></i> Criar Conta
+        </button>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Modal: Nova Conta -->
+<div class="modal-overlay" id="addContaModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-wallet"></i> Nova Conta</h2>
+            <button class="modal-close" onclick="closeModal('addContaModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('nova_conta') }}" method="POST" class="modal-form">
+            <div class="form-group">
+                <label>Nome da Conta</label>
+                <input type="text" name="nome" placeholder="Ex: Nubank, Itaú, Carteira..." required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Tipo</label>
+                    <select name="tipo" required>
+                        <option value="corrente">Conta Corrente</option>
+                        <option value="poupanca">Poupança</option>
+                        <option value="cartao">Cartão de Crédito</option>
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="investimento">Investimento</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Saldo Inicial (R$)</label>
+                    <input type="number" name="saldo_inicial" step="0.01" value="0" placeholder="0,00">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Cor</label>
+                    <input type="color" name="cor" value="#7c5cfc" class="color-input">
+                </div>
+                <div class="form-group">
+                    <label>Ícone</label>
+                    <select name="icone">
+                        <option value="fa-wallet">💳 Carteira</option>
+                        <option value="fa-building-columns">🏦 Banco</option>
+                        <option value="fa-credit-card">💳 Cartão</option>
+                        <option value="fa-money-bill">💵 Dinheiro</option>
+                        <option value="fa-piggy-bank">🐷 Cofrinho</option>
+                        <option value="fa-chart-line">📈 Investimento</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-check"></i> Criar Conta
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block title %}Orçamentos - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-bullseye"></i> Orçamentos</h1>
+            <p class="page-subtitle">Defina limites de gastos por categoria e acompanhe em tempo real</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('addOrcModal')">
+            <i class="fas fa-plus"></i> Novo Orçamento
+        </button>
+    </div>
+
+    <!-- Month Selector -->
+    <div class="filters-card">
+        <form class="filters-form" method="GET" action="{{ url_for('orcamentos') }}">
+            <div class="filter-group">
+                <label><i class="fas fa-calendar"></i> Mês</label>
+                <select name="mes">
+                    {% for m, nome_mes in [(1,'Janeiro'), (2,'Fevereiro'), (3,'Março'), (4,'Abril'), (5,'Maio'),
+                    (6,'Junho'), (7,'Julho'), (8,'Agosto'), (9,'Setembro'), (10,'Outubro'), (11,'Novembro'),
+                    (12,'Dezembro')] %}
+                    <option value="{{ m }}" {% if mes==m %}selected{% endif %}>{{ nome_mes }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label><i class="fas fa-calendar-alt"></i> Ano</label>
+                <input type="number" name="ano" value="{{ ano }}" min="2020" max="2030">
+            </div>
+            <button type="submit" class="btn btn-glass btn-sm">
+                <i class="fas fa-filter"></i> Ver
+            </button>
+        </form>
+    </div>
+
+    <!-- Summary -->
+    {% if orcamentos %}
+    <div class="stats-grid stats-grid-2">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(124, 92, 252, 0.15); color: #7c5cfc;">
+                <i class="fas fa-bullseye"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Total Orçado</span>
+                <span class="stat-value">{{ total_limite|brl }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon {% if total_gasto > total_limite %}stat-icon-red{% else %}stat-icon-green{% endif %}">
+                <i class="fas fa-money-bill-wave"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-label">Total Gasto</span>
+                <span class="stat-value {% if total_gasto > total_limite %}text-red{% else %}text-green{% endif %}">
+                    {{ total_gasto|brl }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Budget cards -->
+    <div class="budget-cards-grid">
+        {% for orc in orcamentos %}
+        <div
+            class="budget-card {% if orc.percentual >= 90 %}budget-card-danger{% elif orc.percentual >= 70 %}budget-card-warning{% endif %}">
+            <div class="budget-card-header">
+                <div class="budget-card-cat">
+                    {% if orc.categoria_rel %}
+                    <div class="budget-card-icon"
+                        style="background: {{ orc.categoria_rel.cor }}20; color: {{ orc.categoria_rel.cor }}">
+                        <i class="fas {{ orc.categoria_rel.icone }}"></i>
+                    </div>
+                    <span>{{ orc.categoria_rel.nome }}</span>
+                    {% endif %}
+                </div>
+                <form action="{{ url_for('excluir_orcamento', id=orc.id) }}" method="POST" class="inline-form"
+                    onsubmit="return confirm('Excluir este orçamento?')">
+                    <button type="submit" class="btn-icon btn-icon-delete btn-icon-sm"><i
+                            class="fas fa-times"></i></button>
+                </form>
+            </div>
+            <div class="budget-card-values">
+                <span class="budget-card-gasto">{{ orc.valor_gasto|brl }}</span>
+                <span class="budget-card-limite">de {{ orc.valor_limite|brl }}</span>
+            </div>
+            <div class="progress-bar progress-bar-lg">
+                <div class="progress-fill {% if orc.percentual >= 90 %}progress-danger{% elif orc.percentual >= 70 %}progress-warning{% endif %}"
+                    style="width: {{ orc.percentual }}%"></div>
+            </div>
+            <div class="budget-card-footer">
+                <span
+                    class="{% if orc.percentual >= 90 %}text-red{% elif orc.percentual >= 70 %}text-yellow{% else %}text-green{% endif %}">
+                    {{ orc.percentual }}% usado
+                </span>
+                <span class="text-muted">Resta: {{ orc.restante|brl }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state-page">
+        <div class="empty-icon"><i class="fas fa-bullseye"></i></div>
+        <h3>Nenhum orçamento para este mês</h3>
+        <p>Defina limites de gastos por categoria para controlar melhor suas despesas.</p>
+        <button class="btn btn-primary" onclick="openModal('addOrcModal')">
+            <i class="fas fa-plus"></i> Criar Orçamento
+        </button>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Modal -->
+<div class="modal-overlay" id="addOrcModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-bullseye"></i> Novo Orçamento</h2>
+            <button class="modal-close" onclick="closeModal('addOrcModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('novo_orcamento') }}" method="POST" class="modal-form">
+            <div class="form-group">
+                <label>Categoria de Despesa</label>
+                <select name="categoria_id" required>
+                    <option value="">Selecione...</option>
+                    {% for cat in categorias %}
+                    <option value="{{ cat.id }}">{{ cat.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Limite de Gasto (R$)</label>
+                <input type="number" name="valor_limite" step="0.01" min="1" placeholder="Ex: 500.00" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Mês</label>
+                    <select name="mes" required>
+                        {% for m, nome_mes in [(1,'Janeiro'), (2,'Fevereiro'), (3,'Março'), (4,'Abril'), (5,'Maio'),
+                        (6,'Junho'), (7,'Julho'), (8,'Agosto'), (9,'Setembro'), (10,'Outubro'), (11,'Novembro'),
+                        (12,'Dezembro')] %}
+                        <option value="{{ m }}" {% if mes==m %}selected{% endif %}>{{ nome_mes }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Ano</label>
+                    <input type="number" name="ano" value="{{ ano }}" min="2020" max="2030" required>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-check"></i> Criar Orçamento
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
