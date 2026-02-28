@@ -378,7 +378,8 @@ Este código expira em 10 minutos. Se você não solicitou este acesso, por favo
     msg.attach(MIMEText(corpo, 'plain'))
 
     try:
-        servidor = smtplib.SMTP('smtp.gmail.com', 587)
+        # Define um timeout de 15 segundos para evitar que o worker do Gunicorn/Render trave infinitamente
+        servidor = smtplib.SMTP('smtp.gmail.com', 587, timeout=15)
         servidor.starttls()
         servidor.login(email_user, email_pass)
         servidor.sendmail(remetente, email_destino, msg.as_string())
