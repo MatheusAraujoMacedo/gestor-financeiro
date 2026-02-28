@@ -25,7 +25,7 @@
             {% if atrasadas %}(<span class="text-red">{{ atrasadas|length }} atrasada{{ 's' if atrasadas|length > 1
                 }}</span>){% endif %}
             —
-            <a href="{{ url_for('despesas_fixas') }}">Ver detalhes</a>
+            <a href="{{ url_for('transacoes_fixas', tipo='despesa') }}">Ver detalhes</a>
         </span>
     </div>
     {% endif %}

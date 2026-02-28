@@ -1,15 +1,19 @@
 {% extends 'base.html' %}
-{% block title %}Despesas Fixas - FinançasPro{% endblock %}
+{% block title %}{% if tipo == 'receita' %}Receitas Fixas{% else %}Despesas Fixas{% endif %} - FinançasPro{% endblock %}
 
 {% block content %}
 <section class="page-section">
     <div class="page-header">
         <div>
-            <h1><i class="fas fa-file-invoice-dollar"></i> Despesas Fixas</h1>
-            <p class="page-subtitle">Gerencie suas contas mensais e despesas recorrentes</p>
+            <h1><i
+                    class="fas {% if tipo == 'receita' %}fa-hand-holding-usd{% else %}fa-file-invoice-dollar{% endif %}"></i>
+                {% if tipo == 'receita' %}Receitas Fixas{% else %}Despesas Fixas{% endif %}</h1>
+            <p class="page-subtitle">Gerencie suas {% if tipo == 'receita' %}receitas mensais{% else %}contas mensais e
+                despesas recorrentes{% endif %}</p>
         </div>
         <button class="btn btn-primary" onclick="openModal('addDespesaModal')">
-            <i class="fas fa-plus"></i> Nova Despesa Fixa
+            <i class="fas fa-plus"></i> {% if tipo == 'receita' %}Nova Receita Fixa{% else %}Nova Despesa Fixa{% endif
+            %}
         </button>
     </div>
 
@@ -29,7 +33,7 @@
                 <i class="fas fa-check-circle"></i>
             </div>
             <div class="stat-info">
-                <span class="stat-label">Pago este Mês</span>
+                <span class="stat-label">{% if tipo == 'receita' %}Recebido{% else %}Pago{% endif %} este Mês</span>
                 <span class="stat-value text-green">{{ total_pago|brl }}</span>
             </div>
         </div>
@@ -48,7 +52,8 @@
     {% if despesas %}
     <div class="table-card">
         <div class="table-header">
-            <h2><i class="fas fa-list"></i> Suas Despesas Fixas</h2>
+            <h2><i class="fas fa-list"></i> Suas {% if tipo == 'receita' %}Receitas Fixas{% else %}Despesas Fixas{%
+                endif %}</h2>
             <span class="badge">{{ despesas|length }} cadastradas</span>
         </div>
         <div class="table-responsive">
@@ -83,7 +88,8 @@
                             <span class="cat-badge">—</span>
                             {% endif %}
                         </td>
-                        <td class="td-valor text-red">{{ d.valor|brl }}</td>
+                        <td class="td-valor {% if tipo == 'receita' %}text-green{% else %}text-red{% endif %}">{{
+                            d.valor|brl }}</td>
                         <td>Todo dia <strong>{{ d.dia_vencimento }}</strong></td>
                         <td>
                             {% set status = d.status_atual %}
@@ -101,14 +107,16 @@
                         </td>
                         <td class="td-actions">
                             {% if not d.pago_no_mes(hoje.year, hoje.month) %}
-                            <form action="{{ url_for('pagar_despesa_fixa', id=d.id) }}" method="POST"
+                            <form action="{{ url_for('pagar_transacao_fixa', id=d.id) }}" method="POST"
                                 class="inline-form">
-                                <button type="submit" class="btn btn-sm btn-primary" title="Marcar como paga">
-                                    <i class="fas fa-check"></i> Pagar
+                                <button type="submit" class="btn btn-sm btn-primary"
+                                    title="{% if tipo == 'receita' %}Marcar como recebida{% else %}Marcar como paga{% endif %}">
+                                    <i class="fas fa-check"></i> {% if tipo == 'receita' %}Receber{% else %}Pagar{%
+                                    endif %}
                                 </button>
                             </form>
                             {% endif %}
-                            <form action="{{ url_for('excluir_despesa_fixa', id=d.id) }}" method="POST"
+                            <form action="{{ url_for('excluir_transacao_fixa', id=d.id) }}" method="POST"
                                 class="inline-form" onsubmit="return confirm('Excluir {{ d.nome }}?')">
                                 <button type="submit" class="btn-icon btn-icon-delete" title="Excluir">
                                     <i class="fas fa-trash"></i>
@@ -123,11 +131,15 @@
     </div>
     {% else %}
     <div class="empty-state-page">
-        <div class="empty-icon"><i class="fas fa-file-invoice-dollar"></i></div>
-        <h3>Nenhuma despesa fixa cadastrada</h3>
-        <p>Cadastre contas como aluguel, internet, streaming, etc.</p>
+        <div class="empty-icon"><i
+                class="fas {% if tipo == 'receita' %}fa-hand-holding-usd{% else %}fa-file-invoice-dollar{% endif %}"></i>
+        </div>
+        <h3>Nenhuma {% if tipo == 'receita' %}receita{% else %}despesa{% endif %} fixa cadastrada</h3>
+        <p>Cadastre {% if tipo == 'receita' %}salários, rendas extras, etc.{% else %}contas como aluguel, internet,
+            streaming, etc.{% endif %}</p>
         <button class="btn btn-primary" onclick="openModal('addDespesaModal')">
-            <i class="fas fa-plus"></i> Cadastrar Despesa Fixa
+            <i class="fas fa-plus"></i> Cadastrar {% if tipo == 'receita' %}Receita Fixa{% else %}Despesa Fixa{% endif
+            %}
         </button>
     </div>
     {% endif %}
@@ -137,13 +149,18 @@
 <div class="modal-overlay" id="addDespesaModal">
     <div class="modal">
         <div class="modal-header">
-            <h2><i class="fas fa-file-invoice-dollar"></i> Nova Despesa Fixa</h2>
+            <h2><i
+                    class="fas {% if tipo == 'receita' %}fa-hand-holding-usd{% else %}fa-file-invoice-dollar{% endif %}"></i>
+                Nova {% if tipo == 'receita' %}Receita{% else %}Despesa{% endif %} Fixa</h2>
             <button class="modal-close" onclick="closeModal('addDespesaModal')"><i class="fas fa-times"></i></button>
         </div>
-        <form action="{{ url_for('nova_despesa_fixa') }}" method="POST" class="modal-form">
+        <form action="{{ url_for('nova_transacao_fixa') }}" method="POST" class="modal-form">
+            <input type="hidden" name="tipo" value="{{ tipo }}">
             <div class="form-group">
-                <label>Nome da Despesa</label>
-                <input type="text" name="nome" placeholder="Ex: Aluguel, Internet, Netflix..." required>
+                <label>Nome da {% if tipo == 'receita' %}Receita{% else %}Despesa{% endif %}</label>
+                <input type="text" name="nome"
+                    placeholder="{% if tipo == 'receita' %}Ex: Salário, Mesada...{% else %}Ex: Aluguel, Internet, Netflix...{% endif %}"
+                    required>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -160,13 +177,13 @@
                     <label>Categoria</label>
                     <select name="categoria_id">
                         <option value="">Selecione...</option>
-                        {% for cat in categorias if cat.tipo == 'despesa' %}
+                        {% for cat in categorias %}
                         <option value="{{ cat.id }}">{{ cat.nome }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Conta de Pagamento</label>
+                    <label>Conta {% if tipo == 'receita' %}de Destino{% else %}de Pagamento{% endif %}</label>
                     <select name="conta_id">
                         <option value="">Selecione...</option>
                         {% for c in contas %}

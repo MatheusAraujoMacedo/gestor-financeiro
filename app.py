@@ -75,7 +75,7 @@ class Usuario(UserMixin, db.Model):
     contas = db.relationship('Conta', backref='dono', lazy=True, cascade='all, delete-orphan')
     categorias = db.relationship('Categoria', backref='dono', lazy=True, cascade='all, delete-orphan')
     tags = db.relationship('Tag', backref='dono', lazy=True, cascade='all, delete-orphan')
-    despesas_fixas = db.relationship('DespesaFixa', backref='dono', lazy=True, cascade='all, delete-orphan')
+    transacoes_fixas = db.relationship('TransacaoFixa', backref='dono', lazy=True, cascade='all, delete-orphan')
     orcamentos = db.relationship('Orcamento', backref='dono', lazy=True, cascade='all, delete-orphan')
     metas = db.relationship('Meta', backref='dono', lazy=True, cascade='all, delete-orphan')
     cartoes = db.relationship('CartaoCredito', backref='dono', lazy=True, cascade='all, delete-orphan')
@@ -98,7 +98,7 @@ class Conta(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
 
     transacoes = db.relationship('Transacao', backref='conta', lazy=True)
-    despesas_fixas = db.relationship('DespesaFixa', backref='conta', lazy=True)
+    transacoes_fixas = db.relationship('TransacaoFixa', backref='conta', lazy=True)
 
     @property
     def saldo_atual(self):
@@ -127,7 +127,7 @@ class Categoria(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
 
     transacoes = db.relationship('Transacao', backref='categoria_rel', lazy=True)
-    despesas_fixas = db.relationship('DespesaFixa', backref='categoria_rel', lazy=True)
+    transacoes_fixas = db.relationship('TransacaoFixa', backref='categoria_rel', lazy=True)
     orcamentos = db.relationship('Orcamento', backref='categoria_rel', lazy=True)
 
 
@@ -165,10 +165,12 @@ class Transacao(db.Model):
         return 'Sem conta'
 
 
-class DespesaFixa(db.Model):
+class TransacaoFixa(db.Model):
+    __tablename__ = 'transacao_fixa'
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     valor = db.Column(db.Float, nullable=False)
+    tipo = db.Column(db.String(10), nullable=False, default='despesa') # 'receita' ou 'despesa'
     dia_vencimento = db.Column(db.Integer, nullable=False)  # 1-31
     categoria_id = db.Column(db.Integer, db.ForeignKey('categoria.id'), nullable=True)
     conta_id = db.Column(db.Integer, db.ForeignKey('conta.id'), nullable=True)
@@ -632,11 +634,11 @@ def dashboard():
     ).all()
 
     # Despesas fixas pendentes
-    despesas_fixas = DespesaFixa.query.filter_by(
+    transacoes_fixas = TransacaoFixa.query.filter_by(
         usuario_id=current_user.id,
         ativo=True
     ).all()
-    pendentes = [d for d in despesas_fixas if d.status_atual in ('pendente', 'proximo', 'atrasado')]
+    pendentes = [d for d in transacoes_fixas if d.status_atual in ('pendente', 'proximo', 'atrasado')]
 
     # Saldo total de todas as contas
     saldo_total = sum(c.saldo_atual for c in contas)
@@ -925,43 +927,51 @@ def excluir_tag(id):
 
 
 # =============================================
-# DESPESAS FIXAS
+# =============================================
+# TRANSAÇÕES FIXAS
 # =============================================
 
-@app.route('/despesas-fixas')
+@app.route('/transacoes-fixas/<tipo>')
 @login_required
-def despesas_fixas():
-    despesas = DespesaFixa.query.filter_by(usuario_id=current_user.id).order_by(DespesaFixa.dia_vencimento).all()
-    categorias = Categoria.query.filter_by(usuario_id=current_user.id).all()
+def transacoes_fixas(tipo):
+    if tipo not in ('receita', 'despesa'):
+        tipo = 'despesa'
+        
+    transacoes = TransacaoFixa.query.filter_by(usuario_id=current_user.id, tipo=tipo).order_by(TransacaoFixa.dia_vencimento).all()
+    categorias = Categoria.query.filter_by(usuario_id=current_user.id, tipo=tipo).all()
     contas = Conta.query.filter_by(usuario_id=current_user.id, ativo=True).all()
     hoje = date.today()
 
-    total_fixo = sum(d.valor for d in despesas if d.ativo)
-    total_pago = sum(d.valor for d in despesas if d.ativo and d.pago_no_mes(hoje.year, hoje.month))
+    total_fixo = sum(d.valor for d in transacoes if d.ativo)
+    total_pago = sum(d.valor for d in transacoes if d.ativo and d.pago_no_mes(hoje.year, hoje.month))
     total_pendente = total_fixo - total_pago
 
-    return render_template('despesas_fixas.html',
-                           despesas=despesas,
+    return render_template('transacoes_fixas.html',
+                           despesas=transacoes,
                            categorias=categorias,
                            contas=contas,
                            hoje=hoje,
+                           tipo=tipo,
                            total_fixo=total_fixo,
                            total_pago=total_pago,
                            total_pendente=total_pendente)
 
 
-@app.route('/despesa-fixa/nova', methods=['POST'])
+@app.route('/transacao-fixa/nova', methods=['POST'])
 @login_required
-def nova_despesa_fixa():
+def nova_transacao_fixa():
     nome = request.form.get('nome', '').strip()
     valor = request.form.get('valor', '')
     dia = request.form.get('dia_vencimento', '')
     categoria_id = request.form.get('categoria_id', '')
     conta_id = request.form.get('conta_id', '')
+    tipo = request.form.get('tipo', 'despesa')
+
+    target_url = url_for('transacoes_fixas', tipo=tipo)
 
     if not nome:
         flash('Informe o nome.', 'error')
-        return redirect(url_for('despesas_fixas'))
+        return redirect(target_url)
 
     try:
         valor = float(valor)
@@ -970,59 +980,63 @@ def nova_despesa_fixa():
             raise ValueError
     except (ValueError, TypeError):
         flash('Valores inválidos.', 'error')
-        return redirect(url_for('despesas_fixas'))
+        return redirect(target_url)
 
-    despesa = DespesaFixa(
-        nome=nome, valor=valor, dia_vencimento=dia,
+    transacao_fixa = TransacaoFixa(
+        nome=nome, valor=valor, dia_vencimento=dia, tipo=tipo,
         categoria_id=int(categoria_id) if categoria_id else None,
         conta_id=int(conta_id) if conta_id else None,
         usuario_id=current_user.id
     )
-    db.session.add(despesa)
+    db.session.add(transacao_fixa)
     db.session.commit()
-    flash('Despesa fixa criada!', 'success')
-    return redirect(url_for('despesas_fixas'))
+    flash('Transação fixa criada!', 'success')
+    return redirect(target_url)
 
 
-@app.route('/despesa-fixa/pagar/<int:id>', methods=['POST'])
+@app.route('/transacao-fixa/pagar/<int:id>', methods=['POST'])
 @login_required
-def pagar_despesa_fixa(id):
-    despesa = DespesaFixa.query.get_or_404(id)
-    if despesa.usuario_id != current_user.id:
+def pagar_transacao_fixa(id):
+    transacao_fixa = TransacaoFixa.query.get_or_404(id)
+    if transacao_fixa.usuario_id != current_user.id:
         flash('Acesso negado.', 'error')
-        return redirect(url_for('despesas_fixas'))
+        return redirect(url_for('dashboard'))
+
+    target_url = url_for('transacoes_fixas', tipo=transacao_fixa.tipo)
 
     hoje = date.today()
-    despesa.marcar_pago(hoje.year, hoje.month)
+    transacao_fixa.marcar_pago(hoje.year, hoje.month)
 
     # Cria transação automática
     transacao = Transacao(
-        tipo='despesa',
-        valor=despesa.valor,
-        descricao=f'Despesa fixa: {despesa.nome}',
+        tipo=transacao_fixa.tipo,
+        valor=transacao_fixa.valor,
+        descricao=f'Fixo: {transacao_fixa.nome}',
         data=datetime.now(),
         usuario_id=current_user.id,
-        categoria_id=despesa.categoria_id,
-        conta_id=despesa.conta_id
+        categoria_id=transacao_fixa.categoria_id,
+        conta_id=transacao_fixa.conta_id
     )
     db.session.add(transacao)
     db.session.commit()
-    flash(f'{despesa.nome} marcada como paga!', 'success')
-    return redirect(url_for('despesas_fixas'))
+    flash(f'{transacao_fixa.nome} contabilizada neste mês!', 'success')
+    return redirect(target_url)
 
 
-@app.route('/despesa-fixa/excluir/<int:id>', methods=['POST'])
+@app.route('/transacao-fixa/excluir/<int:id>', methods=['POST'])
 @login_required
-def excluir_despesa_fixa(id):
-    despesa = DespesaFixa.query.get_or_404(id)
-    if despesa.usuario_id != current_user.id:
+def excluir_transacao_fixa(id):
+    transacao_fixa = TransacaoFixa.query.get_or_404(id)
+    tipo = transacao_fixa.tipo
+    
+    if transacao_fixa.usuario_id != current_user.id:
         flash('Acesso negado.', 'error')
-        return redirect(url_for('despesas_fixas'))
+        return redirect(url_for('dashboard'))
 
-    db.session.delete(despesa)
+    db.session.delete(transacao_fixa)
     db.session.commit()
-    flash('Despesa fixa excluída!', 'success')
-    return redirect(url_for('despesas_fixas'))
+    flash('Transação fixa excluída!', 'success')
+    return redirect(url_for('transacoes_fixas', tipo=tipo))
 
 
 # =============================================
@@ -1383,10 +1397,10 @@ def calendario():
         dias[dia]['transacoes'].append(t)
 
     # Despesas fixas do mês
-    despesas_fixas = DespesaFixa.query.filter_by(
+    transacoes_fixas = TransacaoFixa.query.filter_by(
         usuario_id=current_user.id, ativo=True
     ).all()
-    vencimentos = {d.dia_vencimento: d for d in despesas_fixas}
+    vencimentos = {d.dia_vencimento: d for d in transacoes_fixas}
 
     nome_mes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                 'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][mes-1]

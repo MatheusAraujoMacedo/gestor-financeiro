@@ -36,6 +36,12 @@
                 <li><a href="{{ url_for('calendario') }}"
                         class="{% if request.endpoint == 'calendario' %}nav-active{% endif %}"><i
                             class="fas fa-calendar-alt"></i> Calendário</a></li>
+                <li><a href="{{ url_for('transacoes_fixas', tipo='receita') }}"
+                        class="{% if request.endpoint == 'transacoes_fixas' and request.view_args.get('tipo') == 'receita' %}nav-active{% endif %}"><i
+                            class="fas fa-hand-holding-usd"></i> Receitas Fixas</a></li>
+                <li><a href="{{ url_for('transacoes_fixas', tipo='despesa') }}"
+                        class="{% if request.endpoint == 'transacoes_fixas' and request.view_args.get('tipo') == 'despesa' %}nav-active{% endif %}"><i
+                            class="fas fa-file-invoice-dollar"></i> Despesas Fixas</a></li>
                 <li><a href="{{ url_for('metas') }}"
                         class="{% if request.endpoint == 'metas' %}nav-active{% endif %}"><i
                             class="fas fa-flag-checkered"></i> Metas</a></li>
