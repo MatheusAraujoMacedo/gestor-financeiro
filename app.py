@@ -458,28 +458,33 @@ def login():
 
 @app.route('/api/login/request_code', methods=['POST'])
 def api_request_code():
-    data = request.get_json()
-    if not data or 'email' not in data:
-        return jsonify({'status': 'error', 'message': 'E-mail não fornecido'}), 400
-    
-    email = data['email'].strip()
-    usuario = Usuario.query.filter_by(email=email).first()
-    
-    if not usuario:
-        return jsonify({'status': 'error', 'message': 'E-mail não encontrado no sistema'}), 404
-    
-    codigo = str(random.randint(100000, 999999))
-    expiracao = datetime.utcnow() + timedelta(minutes=10)
-    
-    usuario.codigo_verificacao = codigo
-    usuario.codigo_expiracao = expiracao
-    db.session.commit()
-    
-    sucesso = enviar_email_verificacao(usuario.email, codigo)
-    if sucesso:
-        return jsonify({'status': 'success', 'message': 'Código enviado com sucesso'})
-    else:
-        return jsonify({'status': 'error', 'message': 'Erro ao enviar o e-mail. Verifique as configurações.'}), 500
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data:
+            return jsonify({'status': 'error', 'message': 'E-mail não fornecido'}), 400
+        
+        email = data['email'].strip()
+        usuario = Usuario.query.filter_by(email=email).first()
+        
+        if not usuario:
+            return jsonify({'status': 'error', 'message': 'E-mail não encontrado no sistema'}), 404
+        
+        codigo = str(random.randint(100000, 999999))
+        expiracao = datetime.utcnow() + timedelta(minutes=10)
+        
+        usuario.codigo_verificacao = codigo
+        usuario.codigo_expiracao = expiracao
+        db.session.commit()
+        
+        sucesso = enviar_email_verificacao(usuario.email, codigo)
+        if sucesso:
+            return jsonify({'status': 'success', 'message': 'Código enviado com sucesso'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Erro ao enviar o e-mail. Verifique as configurações.'}), 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Erro interno: {str(e)}'}), 500
 
 
 @app.route('/api/login/verify_code', methods=['POST'])
