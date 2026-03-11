@@ -9,9 +9,17 @@
             <h1 class="dash-title">Olá, {{ usuario.nome.split()[0] }} <span class="wave">👋</span></h1>
             <p class="dash-subtitle">Aqui está o resumo das suas finanças</p>
         </div>
-        <button class="btn btn-primary" onclick="openModal('addModal')">
-            <i class="fas fa-plus"></i> Nova Transação
-        </button>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-glass btn-sm" onclick="openModal('transferModal')">
+                <i class="fas fa-exchange-alt"></i> Transferir
+            </button>
+            <button class="btn btn-glass btn-sm" onclick="openModal('parceladaModal')">
+                <i class="fas fa-layer-group"></i> Parcelar
+            </button>
+            <button class="btn btn-primary" onclick="openModal('addModal')">
+                <i class="fas fa-plus"></i> Nova Transação
+            </button>
+        </div>
     </div>
 
     <!-- Alerts: pending fixed expenses -->
@@ -26,6 +34,19 @@
                 }}</span>){% endif %}
             —
             <a href="{{ url_for('transacoes_fixas', tipo='despesa') }}">Ver detalhes</a>
+        </span>
+    </div>
+    {% endif %}
+
+    <!-- Unusual spending alerts -->
+    {% if alertas_gastos %}
+    <div class="alert-banner alert-danger">
+        <i class="fas fa-exclamation-circle"></i>
+        <span>
+            <strong>Gastos incomuns detectados:</strong>
+            {% for a in alertas_gastos[:2] %}
+            {{ a.descricao }} ({{ a.valor|brl }}, média: {{ a.media|brl }}){% if not loop.last %}, {% endif %}
+            {% endfor %}
         </span>
     </div>
     {% endif %}
@@ -70,6 +91,90 @@
                 <span class="stat-value {% if saldo >= 0 %}text-green{% else %}text-red{% endif %}">
                     {{ saldo|brl }}
                 </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Insights Section -->
+    <div class="insights-grid">
+        <!-- Score Financeiro -->
+        <div class="insight-card">
+            <div class="insight-header">
+                <i class="fas fa-heartbeat" style="color: {{ score.cor }}"></i>
+                <h3>Saúde Financeira</h3>
+            </div>
+            <div class="score-gauge">
+                <div class="score-circle" style="--score: {{ score.score }}; --score-color: {{ score.cor }}">
+                    <span class="score-value">{{ score.score }}</span>
+                </div>
+                <span class="score-label" style="color: {{ score.cor }}">{{ score.label }}</span>
+            </div>
+        </div>
+
+        <!-- Resumo Semanal -->
+        <div class="insight-card">
+            <div class="insight-header">
+                <i class="fas fa-chart-line" style="color: #45b7d1"></i>
+                <h3>Resumo Semanal</h3>
+            </div>
+            <div class="insight-body">
+                <div class="insight-stat">
+                    <span class="insight-stat-label">Gastos esta semana</span>
+                    <span class="insight-stat-value text-red">{{ resumo.gastos_semana|brl }}</span>
+                </div>
+                <div class="insight-stat">
+                    <span class="insight-stat-label">Semana anterior</span>
+                    <span class="insight-stat-value">{{ resumo.gastos_semana_ant|brl }}</span>
+                </div>
+                <div class="insight-stat">
+                    <span class="insight-stat-label">Variação</span>
+                    <span class="insight-stat-value {% if resumo.variacao <= 0 %}text-green{% else %}text-red{% endif %}">
+                        {% if resumo.variacao > 0 %}+{% endif %}{{ resumo.variacao }}%
+                        <i class="fas fa-arrow-{% if resumo.variacao <= 0 %}down{% else %}up{% endif %}"></i>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Previsão de Saldo -->
+        <div class="insight-card">
+            <div class="insight-header">
+                <i class="fas fa-crystal-ball" style="color: #7c5cfc"></i>
+                <h3>Previsão de Saldo</h3>
+            </div>
+            <div class="insight-body">
+                {% for p in previsao.previsao %}
+                <div class="insight-stat">
+                    <span class="insight-stat-label">{{ p.mes }}</span>
+                    <span class="insight-stat-value {% if p.saldo >= 0 %}text-green{% else %}text-red{% endif %}">
+                        {{ p.saldo|brl }}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Economia do Mês -->
+        <div class="insight-card">
+            <div class="insight-header">
+                <i class="fas fa-piggy-bank" style="color: #00d68f"></i>
+                <h3>Economia do Mês</h3>
+            </div>
+            <div class="insight-body">
+                <div class="insight-stat">
+                    <span class="insight-stat-label">Receitas</span>
+                    <span class="insight-stat-value text-green">{{ resumo.receitas_mes|brl }}</span>
+                </div>
+                <div class="insight-stat">
+                    <span class="insight-stat-label">Despesas</span>
+                    <span class="insight-stat-value text-red">{{ resumo.despesas_mes|brl }}</span>
+                </div>
+                <div class="insight-stat">
+                    <span class="insight-stat-label">Economia</span>
+                    <span class="insight-stat-value {% if resumo.economia_mes >= 0 %}text-green{% else %}text-red{% endif %}" style="font-weight: 700;">
+                        {{ resumo.economia_mes|brl }}
+                    </span>
+                </div>
             </div>
         </div>
     </div>
@@ -193,6 +298,9 @@
                                 </td>
                                 <td class="td-desc">
                                     {{ t.descricao or '—' }}
+                                    {% if t.parcela_label %}
+                                    <span class="parcela-badge">{{ t.parcela_label }}</span>
+                                    {% endif %}
                                     {% if t.tags %}
                                     <div class="td-tags">
                                         {% for tag in t.tags %}
@@ -234,6 +342,13 @@
                                         onclick="openEditModal({{ t.id }}, '{{ t.tipo }}', {{ t.valor }}, '{{ t.categoria_id or '' }}', '{{ t.conta_id or '' }}', '{{ t.descricao|default('', true)|e }}', '{{ t.data.strftime('%Y-%m-%d') }}', {{ t.tags|map(attribute='id')|list|tojson }})">
                                         <i class="fas fa-pen"></i>
                                     </button>
+                                    <form action="{{ url_for('duplicar_transacao', id=t.id) }}" method="POST"
+                                        class="inline-form">
+                                        <button type="submit" class="btn-icon" title="Duplicar"
+                                            style="color: #45b7d1;">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </form>
                                     <form action="{{ url_for('excluir_transacao', id=t.id) }}" method="POST"
                                         class="inline-form" onsubmit="return confirm('Excluir esta transação?')">
                                         <button type="submit" class="btn-icon btn-icon-delete" title="Excluir">
@@ -448,12 +563,120 @@
         </form>
     </div>
 </div>
+
+<!-- Modal: Transferência -->
+<div class="modal-overlay" id="transferModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-exchange-alt"></i> Transferir entre Contas</h2>
+            <button class="modal-close" onclick="closeModal('transferModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('transferir') }}" method="POST" class="modal-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Conta Origem</label>
+                    <select name="conta_origem" required>
+                        <option value="">Selecione...</option>
+                        {% for c in contas %}
+                        <option value="{{ c.id }}">{{ c.nome }} ({{ c.saldo_atual|brl }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Conta Destino</label>
+                    <select name="conta_destino" required>
+                        <option value="">Selecione...</option>
+                        {% for c in contas %}
+                        <option value="{{ c.id }}">{{ c.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Valor (R$)</label>
+                    <input type="number" name="valor" step="0.01" min="0.01" placeholder="0,00" required>
+                </div>
+                <div class="form-group">
+                    <label>Descrição (opcional)</label>
+                    <input type="text" name="descricao" placeholder="Ex: Pagar cartão">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-exchange-alt"></i> Transferir
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Nova Transação Parcelada -->
+<div class="modal-overlay" id="parceladaModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-layer-group"></i> Nova Transação Parcelada</h2>
+            <button class="modal-close" onclick="closeModal('parceladaModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('nova_transacao_parcelada') }}" method="POST" class="modal-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Tipo</label>
+                    <select name="tipo" required>
+                        <option value="despesa">Despesa</option>
+                        <option value="receita">Receita</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Valor Total (R$)</label>
+                    <input type="number" name="valor" step="0.01" min="0.01" placeholder="Ex: 1200.00" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Número de Parcelas</label>
+                    <input type="number" name="parcelas" min="2" max="60" placeholder="Ex: 12" required>
+                </div>
+                <div class="form-group">
+                    <label>Data da 1ª Parcela</label>
+                    <input type="date" name="data" id="parcela-data" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Categoria</label>
+                    <select name="categoria_id">
+                        <option value="">Selecione...</option>
+                        {% for cat in categorias %}
+                        <option value="{{ cat.id }}">{{ cat.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Conta</label>
+                    <select name="conta_id">
+                        <option value="">Selecione...</option>
+                        {% for c in contas %}
+                        <option value="{{ c.id }}">{{ c.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Descrição</label>
+                <input type="text" name="descricao" placeholder="Ex: TV Samsung 55 polegadas">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-layer-group"></i> Criar Parcelas
+            </button>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
     document.getElementById('add-data').valueAsDate = new Date();
+    document.getElementById('parcela-data').valueAsDate = new Date();
 
     {% if categorias_grafico %}
     const chartColors = [

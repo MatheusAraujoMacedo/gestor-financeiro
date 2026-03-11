@@ -12,50 +12,104 @@
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#0f0f1e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 
 <body>
-    <!-- Navbar -->
-    <nav class="navbar" id="navbar">
-        <div class="nav-container">
-            <a href="{{ url_for('home') }}" class="nav-logo">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('home') }}" class="sidebar-logo">
                 <i class="fas fa-wallet"></i>
                 <span>FinançasPro</span>
             </a>
-            <button class="nav-toggle" id="navToggle" aria-label="Menu">
-                <span></span><span></span><span></span>
+            <button class="sidebar-toggle-close" id="sidebarToggleClose">
+                <i class="fas fa-times"></i>
             </button>
-            <ul class="nav-links" id="navLinks">
-                <li><a href="{{ url_for('dashboard') }}"
-                        class="{% if request.endpoint == 'dashboard' %}nav-active{% endif %}"><i
-                            class="fas fa-chart-pie"></i> Dashboard</a></li>
-                <li><a href="{{ url_for('relatorios') }}"
-                        class="{% if request.endpoint == 'relatorios' %}nav-active{% endif %}"><i
-                            class="fas fa-chart-bar"></i> Relatórios</a></li>
-                <li><a href="{{ url_for('calendario') }}"
-                        class="{% if request.endpoint == 'calendario' %}nav-active{% endif %}"><i
-                            class="fas fa-calendar-alt"></i> Calendário</a></li>
-                <li><a href="{{ url_for('transacoes_fixas', tipo='receita') }}"
-                        class="{% if request.endpoint == 'transacoes_fixas' and request.view_args.get('tipo') == 'receita' %}nav-active{% endif %}"><i
-                            class="fas fa-hand-holding-usd"></i> Receitas Fixas</a></li>
-                <li><a href="{{ url_for('transacoes_fixas', tipo='despesa') }}"
-                        class="{% if request.endpoint == 'transacoes_fixas' and request.view_args.get('tipo') == 'despesa' %}nav-active{% endif %}"><i
-                            class="fas fa-file-invoice-dollar"></i> Despesas Fixas</a></li>
-                <li><a href="{{ url_for('metas') }}"
-                        class="{% if request.endpoint == 'metas' %}nav-active{% endif %}"><i
-                            class="fas fa-flag-checkered"></i> Metas</a></li>
-                <li><a href="{{ url_for('cartoes') }}"
-                        class="{% if request.endpoint == 'cartoes' %}nav-active{% endif %}"><i
-                            class="fas fa-credit-card"></i> Cartões</a></li>
-                <li><a href="{{ url_for('busca') }}"
-                        class="{% if request.endpoint == 'busca' %}nav-active{% endif %}"><i class="fas fa-search"></i>
-                        Busca</a></li>
-                <li><a href="{{ url_for('perfil') }}"
-                        class="{% if request.endpoint == 'perfil' %}nav-active{% endif %}"><i
-                            class="fas fa-user-circle"></i> Perfil</a></li>
-            </ul>
         </div>
-    </nav>
+
+        <div class="sidebar-content">
+            <div class="sidebar-group">
+                <p class="sidebar-group-title">Principal</p>
+                <ul class="sidebar-links">
+                    <li><a href="{{ url_for('dashboard') }}"
+                            class="{% if request.endpoint == 'dashboard' %}active{% endif %}"><i
+                                class="fas fa-chart-pie"></i> Dashboard</a></li>
+                    <li><a href="{{ url_for('relatorios') }}"
+                            class="{% if request.endpoint == 'relatorios' %}active{% endif %}"><i
+                                class="fas fa-chart-bar"></i> Relatórios</a></li>
+                    <li><a href="{{ url_for('calendario') }}"
+                            class="{% if request.endpoint == 'calendario' %}active{% endif %}"><i
+                                class="fas fa-calendar-alt"></i> Calendário</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-group">
+                <p class="sidebar-group-title">Lançamentos</p>
+                <ul class="sidebar-links">
+                    <li><a href="{{ url_for('transacoes_fixas', tipo='receita') }}"
+                            class="{% if request.endpoint == 'transacoes_fixas' and request.view_args.get('tipo') == 'receita' %}active{% endif %}"><i
+                                class="fas fa-hand-holding-usd"></i> Receitas Fixas</a></li>
+                    <li><a href="{{ url_for('transacoes_fixas', tipo='despesa') }}"
+                            class="{% if request.endpoint == 'transacoes_fixas' and request.view_args.get('tipo') == 'despesa' %}active{% endif %}"><i
+                                class="fas fa-file-invoice-dollar"></i> Despesas Fixas</a></li>
+                    <li><a href="{{ url_for('importar') }}"
+                            class="{% if request.endpoint == 'importar' %}active{% endif %}"><i
+                                class="fas fa-file-import"></i> Importar CSV</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-group">
+                <p class="sidebar-group-title">Gestão</p>
+                <ul class="sidebar-links">
+                    <li><a href="{{ url_for('metas') }}"
+                            class="{% if request.endpoint == 'metas' %}active{% endif %}"><i
+                                class="fas fa-flag-checkered"></i> Metas</a></li>
+                    <li><a href="{{ url_for('cartoes') }}"
+                            class="{% if request.endpoint == 'cartoes' %}active{% endif %}"><i
+                                class="fas fa-credit-card"></i> Cartões</a></li>
+                    <li><a href="{{ url_for('contas') }}"
+                            class="{% if request.endpoint == 'contas' %}active{% endif %}"><i
+                                class="fas fa-wallet"></i> Contas</a></li>
+                </ul>
+            </div>
+            
+            <div class="sidebar-group">
+                <ul class="sidebar-links">
+                    <li><a href="{{ url_for('busca') }}"
+                            class="{% if request.endpoint == 'busca' %}active{% endif %}"><i class="fas fa-search"></i>
+                            Busca Livre</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <a href="{{ url_for('perfil') }}" class="sidebar-user {% if request.endpoint == 'perfil' %}active{% endif %}">
+                <div class="user-avatar">
+                    <i class="fas fa-user-astronaut"></i>
+                </div>
+                <div class="user-info">
+                    <span class="user-name">Meu Perfil</span>
+                    <span class="user-role">Configurações</span>
+                </div>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Mobile Header -->
+    <header class="mobile-header" id="mobileHeader">
+        <button class="sidebar-toggle" id="sidebarToggle">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="mobile-logo">
+            <i class="fas fa-wallet"></i>
+            <span>FinançasPro</span>
+        </div>
+        <div class="mobile-placeholder"></div>
+    </header>
 
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -87,6 +141,12 @@
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>
     {% block scripts %}{% endblock %}
+    <script>
+        // PWA Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+        }
+    </script>
 </body>
 
 </html>

@@ -88,10 +88,32 @@
             <!-- Deposit form -->
             <form action="{{ url_for('depositar_meta', id=meta.id) }}" method="POST" class="goal-deposit-form">
                 <input type="number" name="valor" step="0.01" min="0.01" placeholder="Quanto depositar?" required>
+                <input type="text" name="descricao" placeholder="Descrição (opcional)" class="deposit-desc-input">
                 <button type="submit" class="btn btn-sm btn-primary">
                     <i class="fas fa-plus"></i> Depositar
                 </button>
             </form>
+
+            <!-- Deposit History -->
+            {% if meta.depositos %}
+            <div class="deposit-history">
+                <button class="deposit-history-toggle" onclick="this.parentElement.classList.toggle('open')">
+                    <i class="fas fa-history"></i> Histórico de Depósitos ({{ meta.depositos|length }})
+                    <i class="fas fa-chevron-down toggle-arrow"></i>
+                </button>
+                <div class="deposit-history-list">
+                    {% for dep in meta.depositos[:10] %}
+                    <div class="deposit-item">
+                        <div class="deposit-item-info">
+                            <span class="deposit-item-desc">{{ dep.descricao or 'Depósito' }}</span>
+                            <span class="deposit-item-date">{{ dep.data.strftime('%d/%m/%Y %H:%M') }}</span>
+                        </div>
+                        <span class="deposit-item-value text-green">+{{ dep.valor|brl }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>

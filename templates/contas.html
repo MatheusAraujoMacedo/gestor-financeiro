@@ -8,10 +8,14 @@
             <h1><i class="fas fa-wallet"></i> Minhas Contas</h1>
             <p class="page-subtitle">Gerencie suas contas bancárias e carteiras</p>
         </div>
-        <button class="btn btn-primary" onclick="openModal('addContaModal')">
-            <i class="fas fa-plus"></i> Nova Conta
-        </button>
-    </div>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-glass" onclick="openModal('transferContaModal')">
+                <i class="fas fa-exchange-alt"></i> Transferir
+            </button>
+            <button class="btn btn-primary" onclick="openModal('addContaModal')">
+                <i class="fas fa-plus"></i> Nova Conta
+            </button>
+        </div>
 
     {% if contas %}
     <div class="cards-grid">
@@ -118,3 +122,48 @@
     </div>
 </div>
 {% endblock %}
+
+<!-- Modal: Transferência -->
+<div class="modal-overlay" id="transferContaModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-exchange-alt"></i> Transferir entre Contas</h2>
+            <button class="modal-close" onclick="closeModal('transferContaModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('transferir') }}" method="POST" class="modal-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Conta Origem</label>
+                    <select name="conta_origem" required>
+                        <option value="">Selecione...</option>
+                        {% for c in contas %}
+                        <option value="{{ c.id }}">{{ c.nome }} ({{ c.saldo_atual|brl }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Conta Destino</label>
+                    <select name="conta_destino" required>
+                        <option value="">Selecione...</option>
+                        {% for c in contas %}
+                        <option value="{{ c.id }}">{{ c.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Valor (R$)</label>
+                    <input type="number" name="valor" step="0.01" min="0.01" placeholder="0,00" required>
+                </div>
+                <div class="form-group">
+                    <label>Descrição (opcional)</label>
+                    <input type="text" name="descricao" placeholder="Ex: Pagar cartão">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-exchange-alt"></i> Transferir
+            </button>
+        </form>
+    </div>
+</div>

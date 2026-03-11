@@ -1,10 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import calendar as cal_module
 import json
 import csv
 import io
+import uuid
 import os
 import cloudinary
 import cloudinary.uploader
@@ -122,6 +123,11 @@ class Transacao(db.Model):
     categoria_id = db.Column(db.Integer, db.ForeignKey('categoria.id'), nullable=True)
     comprovante = db.Column(db.String(200), nullable=True)  # filename of receipt
 
+    # Parcelas
+    parcela_grupo_id = db.Column(db.String(36), nullable=True)  # UUID do grupo
+    parcela_num = db.Column(db.Integer, nullable=True)  # ex: 3
+    parcela_total = db.Column(db.Integer, nullable=True)  # ex: 12
+
     tags = db.relationship('Tag', secondary=transacao_tags, lazy='subquery',
                            backref=db.backref('transacoes', lazy=True))
 
@@ -136,6 +142,12 @@ class Transacao(db.Model):
         if self.conta:
             return self.conta.nome
         return 'Sem conta'
+
+    @property
+    def parcela_label(self):
+        if self.parcela_num and self.parcela_total:
+            return f'{self.parcela_num}/{self.parcela_total}'
+        return None
 
 
 class TransacaoFixa(db.Model):
@@ -236,6 +248,9 @@ class Meta(db.Model):
     criada_em = db.Column(db.DateTime, default=datetime.utcnow)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
 
+    depositos = db.relationship('DepositoMeta', backref='meta', lazy=True,
+                                cascade='all, delete-orphan', order_by='DepositoMeta.data.desc()')
+
     @property
     def percentual(self):
         if self.valor_alvo <= 0:
@@ -252,6 +267,15 @@ class Meta(db.Model):
             return None
         delta = self.prazo - date.today()
         return max(delta.days, 0)
+
+
+class DepositoMeta(db.Model):
+    __tablename__ = 'deposito_meta'
+    id = db.Column(db.Integer, primary_key=True)
+    meta_id = db.Column(db.Integer, db.ForeignKey('meta.id'), nullable=False)
+    valor = db.Column(db.Float, nullable=False)
+    data = db.Column(db.DateTime, default=datetime.utcnow)
+    descricao = db.Column(db.String(200), nullable=True)
 
 
 class CartaoCredito(db.Model):
@@ -368,10 +392,337 @@ def criar_conta_padrao(usuario_id):
     db.session.add(conta)
 
 
+# =============================================
+# BACKGROUND / AUTOMATIONS
+# =============================================
+cache_processamento = {}
+
+@app.before_request
+def processar_automaticos():
+    # Evita processar em requisições de arquivos estáticos
+    if request.path.startswith('/static/'):
+        return
+
+    usuario = get_user()
+    if not usuario:
+        return
+
+    hoje = date.today()
+    chave_cache = f"{usuario.id}_{hoje.isoformat()}"
+
+    if chave_cache in cache_processamento:
+        return
+
+    houve_mudancas = False
+
+    # Processar transações fixas
+    transacoes_fixas = TransacaoFixa.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+    for tf in transacoes_fixas:
+        if hoje.day >= tf.dia_vencimento and not tf.pago_no_mes(hoje.year, hoje.month):
+            nova_t = Transacao(
+                tipo=tf.tipo,
+                valor=tf.valor,
+                descricao=f"Fixo: {tf.nome}",
+                data=datetime.now(),
+                usuario_id=usuario.id,
+                categoria_id=tf.categoria_id,
+                conta_id=tf.conta_id
+            )
+            db.session.add(nova_t)
+            tf.marcar_pago(hoje.year, hoje.month)
+            houve_mudancas = True
+
+    # Processar Orçamentos: renovação mensal
+    mes_atual = hoje.month
+    ano_atual = hoje.year
+
+    orc_atuais = Orcamento.query.filter_by(usuario_id=usuario.id, mes=mes_atual, ano=ano_atual).count()
+    if orc_atuais == 0:
+        mes_ant = mes_atual - 1
+        ano_ant = ano_atual
+        if mes_ant == 0:
+            mes_ant = 12
+            ano_ant -= 1
+
+        orc_anteriores = Orcamento.query.filter_by(usuario_id=usuario.id, mes=mes_ant, ano=ano_ant).all()
+        for o in orc_anteriores:
+            novo_o = Orcamento(
+                categoria_id=o.categoria_id,
+                valor_limite=o.valor_limite,
+                mes=mes_atual,
+                ano=ano_atual,
+                usuario_id=usuario.id
+            )
+            db.session.add(novo_o)
+            houve_mudancas = True
+
+    if houve_mudancas:
+        db.session.commit()
+    cache_processamento[chave_cache] = True
+
+
+def invalidar_cache_automaticos(usuario_id):
+    hoje = date.today()
+    chave = f"{usuario_id}_{hoje.isoformat()}"
+    cache_processamento.pop(chave, None)
+
+
 # Injetar o usuário em todos os templates
 @app.context_processor
 def inject_user():
     return dict(usuario=get_user())
+
+
+# =============================================
+# AUTOMAÇÕES (roda a cada request)
+# =============================================
+
+_automaticos_cache = {}  # {data_str: True} — evita rodar múltiplas vezes no mesmo dia
+
+
+def processar_automaticos(usuario):
+    """Processa transações fixas vencidas e renova orçamentos automaticamente."""
+    hoje = date.today()
+    chave = f"{usuario.id}-{hoje.isoformat()}"
+    if chave in _automaticos_cache:
+        return
+    _automaticos_cache[chave] = True
+
+    # 1) Lançar transações fixas vencidas automaticamente
+    fixas = TransacaoFixa.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+    lancou = 0
+    for fixa in fixas:
+        if not fixa.pago_no_mes(hoje.year, hoje.month) and hoje.day >= fixa.dia_vencimento:
+            # Criar transação automática
+            transacao = Transacao(
+                tipo=fixa.tipo,
+                valor=fixa.valor,
+                descricao=f'[Auto] {fixa.nome}',
+                data=datetime(hoje.year, hoje.month, min(fixa.dia_vencimento, cal_module.monthrange(hoje.year, hoje.month)[1])),
+                usuario_id=usuario.id,
+                categoria_id=fixa.categoria_id,
+                conta_id=fixa.conta_id
+            )
+            db.session.add(transacao)
+            fixa.marcar_pago(hoje.year, hoje.month)
+            lancou += 1
+
+    # 2) Renovar orçamentos do mês anterior
+    orc_atual = Orcamento.query.filter_by(
+        usuario_id=usuario.id, mes=hoje.month, ano=hoje.year
+    ).count()
+    if orc_atual == 0:
+        # Buscar mês anterior
+        if hoje.month == 1:
+            mes_ant, ano_ant = 12, hoje.year - 1
+        else:
+            mes_ant, ano_ant = hoje.month - 1, hoje.year
+        orcs_anteriores = Orcamento.query.filter_by(
+            usuario_id=usuario.id, mes=mes_ant, ano=ano_ant
+        ).all()
+        for orc in orcs_anteriores:
+            novo = Orcamento(
+                categoria_id=orc.categoria_id,
+                valor_limite=orc.valor_limite,
+                mes=hoje.month,
+                ano=hoje.year,
+                usuario_id=usuario.id
+            )
+            db.session.add(novo)
+
+    if lancou > 0 or orc_atual == 0:
+        db.session.commit()
+
+
+@app.before_request
+def auto_processar():
+    """Roda automações em cada request (com cache diário)."""
+    # Só processa em rotas de página, não em estáticos
+    if request.endpoint and request.endpoint != 'static':
+        try:
+            usuario = Usuario.query.first()
+            if usuario:
+                processar_automaticos(usuario)
+        except Exception:
+            pass
+
+
+# =============================================
+# HELPERS: INSIGHTS FINANCEIROS
+# =============================================
+
+def calcular_resumo_semanal(usuario):
+    """Calcula gastos da semana atual vs semana anterior."""
+    hoje = date.today()
+    inicio_semana = hoje - timedelta(days=hoje.weekday())
+    fim_semana_ant = inicio_semana - timedelta(days=1)
+    inicio_semana_ant = fim_semana_ant - timedelta(days=6)
+
+    gastos_semana = db.session.query(db.func.coalesce(db.func.sum(Transacao.valor), 0)).filter(
+        Transacao.usuario_id == usuario.id,
+        Transacao.tipo == 'despesa',
+        Transacao.data >= datetime.combine(inicio_semana, datetime.min.time()),
+        Transacao.data <= datetime.combine(hoje, datetime.max.time())
+    ).scalar() or 0
+
+    gastos_semana_ant = db.session.query(db.func.coalesce(db.func.sum(Transacao.valor), 0)).filter(
+        Transacao.usuario_id == usuario.id,
+        Transacao.tipo == 'despesa',
+        Transacao.data >= datetime.combine(inicio_semana_ant, datetime.min.time()),
+        Transacao.data <= datetime.combine(fim_semana_ant, datetime.max.time())
+    ).scalar() or 0
+
+    variacao = 0
+    if gastos_semana_ant > 0:
+        variacao = round(((gastos_semana - gastos_semana_ant) / gastos_semana_ant) * 100, 1)
+
+    receitas_mes = db.session.query(db.func.coalesce(db.func.sum(Transacao.valor), 0)).filter(
+        Transacao.usuario_id == usuario.id,
+        Transacao.tipo == 'receita',
+        db.extract('month', Transacao.data) == hoje.month,
+        db.extract('year', Transacao.data) == hoje.year
+    ).scalar() or 0
+
+    despesas_mes = db.session.query(db.func.coalesce(db.func.sum(Transacao.valor), 0)).filter(
+        Transacao.usuario_id == usuario.id,
+        Transacao.tipo == 'despesa',
+        db.extract('month', Transacao.data) == hoje.month,
+        db.extract('year', Transacao.data) == hoje.year
+    ).scalar() or 0
+
+    return {
+        'gastos_semana': float(gastos_semana),
+        'gastos_semana_ant': float(gastos_semana_ant),
+        'variacao': variacao,
+        'receitas_mes': float(receitas_mes),
+        'despesas_mes': float(despesas_mes),
+        'economia_mes': float(receitas_mes) - float(despesas_mes)
+    }
+
+
+def calcular_previsao_saldo(usuario):
+    """Projeta saldo para os próximos 3 meses baseado em transações fixas."""
+    hoje = date.today()
+    contas = Conta.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+    saldo_atual = sum(c.saldo_atual for c in contas)
+
+    fixas = TransacaoFixa.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+    receitas_fixas = sum(f.valor for f in fixas if f.tipo == 'receita')
+    despesas_fixas = sum(f.valor for f in fixas if f.tipo == 'despesa')
+    saldo_mensal = receitas_fixas - despesas_fixas
+
+    previsao = []
+    saldo = saldo_atual
+    for i in range(1, 4):
+        mes = hoje.month + i
+        ano = hoje.year
+        if mes > 12:
+            mes -= 12
+            ano += 1
+        saldo += saldo_mensal
+        nome_mes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][mes-1]
+        previsao.append({
+            'mes': f'{nome_mes}/{ano}',
+            'saldo': round(saldo, 2),
+            'receitas': receitas_fixas,
+            'despesas': despesas_fixas
+        })
+
+    return {
+        'saldo_atual': saldo_atual,
+        'saldo_mensal': saldo_mensal,
+        'previsao': previsao
+    }
+
+
+def calcular_score_financeiro(usuario):
+    """Score de 0-100 baseado em critérios de saúde financeira."""
+    hoje = date.today()
+    score = 50  # Base
+
+    # 1) Receita vs Despesa do mês (até +20)
+    receitas = db.session.query(db.func.coalesce(db.func.sum(Transacao.valor), 0)).filter(
+        Transacao.usuario_id == usuario.id, Transacao.tipo == 'receita',
+        db.extract('month', Transacao.data) == hoje.month,
+        db.extract('year', Transacao.data) == hoje.year
+    ).scalar() or 0
+    despesas = db.session.query(db.func.coalesce(db.func.sum(Transacao.valor), 0)).filter(
+        Transacao.usuario_id == usuario.id, Transacao.tipo == 'despesa',
+        db.extract('month', Transacao.data) == hoje.month,
+        db.extract('year', Transacao.data) == hoje.year
+    ).scalar() or 0
+
+    if receitas > 0:
+        taxa_poupanca = (receitas - despesas) / receitas
+        if taxa_poupanca >= 0.3:
+            score += 20
+        elif taxa_poupanca >= 0.1:
+            score += 10
+        elif taxa_poupanca < 0:
+            score -= 15
+
+    # 2) Orçamentos respeitados (até +15)
+    orcs = Orcamento.query.filter_by(usuario_id=usuario.id, mes=hoje.month, ano=hoje.year).all()
+    if orcs:
+        dentro = sum(1 for o in orcs if o.percentual <= 100)
+        score += int((dentro / len(orcs)) * 15)
+
+    # 3) Contas fixas em dia (até +15)
+    fixas = TransacaoFixa.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+    if fixas:
+        pagas = sum(1 for f in fixas if f.pago_no_mes(hoje.year, hoje.month))
+        vencidas = sum(1 for f in fixas if f.status_atual == 'atrasado')
+        score += int((pagas / len(fixas)) * 10)
+        score -= vencidas * 3
+
+    score = max(0, min(100, score))
+
+    # Classificação
+    if score >= 80:
+        label, cor = 'Excelente', '#00d68f'
+    elif score >= 60:
+        label, cor = 'Bom', '#45b7d1'
+    elif score >= 40:
+        label, cor = 'Regular', '#ffd93d'
+    else:
+        label, cor = 'Atenção', '#ff6b6b'
+
+    return {'score': score, 'label': label, 'cor': cor}
+
+
+def detectar_gastos_incomuns(usuario):
+    """Detecta transações recentes significativamente acima da média da categoria."""
+    hoje = date.today()
+    alertas = []
+
+    # Últimas 10 despesas
+    recentes = Transacao.query.filter_by(
+        usuario_id=usuario.id, tipo='despesa'
+    ).order_by(Transacao.data.desc()).limit(10).all()
+
+    for t in recentes:
+        if not t.categoria_id:
+            continue
+        # Média dos últimos 3 meses nessa categoria
+        tres_meses_atras = hoje - timedelta(days=90)
+        media = db.session.query(db.func.avg(Transacao.valor)).filter(
+            Transacao.usuario_id == usuario.id,
+            Transacao.tipo == 'despesa',
+            Transacao.categoria_id == t.categoria_id,
+            Transacao.data >= datetime.combine(tres_meses_atras, datetime.min.time()),
+            Transacao.id != t.id
+        ).scalar()
+
+        if media and t.valor > media * 2 and t.valor > 50:
+            alertas.append({
+                'descricao': t.descricao or t.categoria_nome,
+                'valor': t.valor,
+                'media': round(float(media), 2),
+                'categoria': t.categoria_nome,
+                'data': t.data.strftime('%d/%m')
+            })
+
+    return alertas[:5]
 
 
 # =============================================
@@ -462,6 +813,12 @@ def dashboard():
     # Saldo total de todas as contas
     saldo_total = sum(c.saldo_atual for c in contas)
 
+    # Insights
+    resumo = calcular_resumo_semanal(usuario)
+    previsao = calcular_previsao_saldo(usuario)
+    score = calcular_score_financeiro(usuario)
+    alertas_gastos = detectar_gastos_incomuns(usuario)
+
     return render_template('dashboard.html',
                            transacoes=transacoes,
                            total_receitas=total_receitas,
@@ -478,7 +835,11 @@ def dashboard():
                            categoria_filtro=categoria_filtro,
                            conta_filtro=conta_filtro,
                            orcamentos=orcamentos,
-                           pendentes=pendentes)
+                           pendentes=pendentes,
+                           resumo=resumo,
+                           previsao=previsao,
+                           score=score,
+                           alertas_gastos=alertas_gastos)
 
 
 # =============================================
@@ -582,6 +943,238 @@ def excluir_transacao(id):
     db.session.commit()
     flash('Transação excluída!', 'success')
     return redirect(url_for('dashboard'))
+
+
+@app.route('/transacao/duplicar/<int:id>', methods=['POST'])
+def duplicar_transacao(id):
+    original = Transacao.query.get_or_404(id)
+    nova = Transacao(
+        tipo=original.tipo,
+        valor=original.valor,
+        descricao=f'{original.descricao or ""} (cópia)',
+        data=datetime.now(),
+        usuario_id=original.usuario_id,
+        categoria_id=original.categoria_id,
+        conta_id=original.conta_id
+    )
+    db.session.add(nova)
+    db.session.commit()
+    flash('Transação duplicada!', 'success')
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/transacao/parcelada', methods=['POST'])
+def nova_transacao_parcelada():
+    usuario = get_user()
+    tipo = request.form.get('tipo', '').strip().lower()
+    valor_total = request.form.get('valor', '')
+    num_parcelas = request.form.get('parcelas', '')
+    categoria_id = request.form.get('categoria_id', '')
+    conta_id = request.form.get('conta_id', '')
+    descricao = request.form.get('descricao', '').strip()
+    data_str = request.form.get('data', '')
+
+    if tipo not in ('receita', 'despesa'):
+        flash('Tipo inválido.', 'error')
+        return redirect(url_for('dashboard'))
+
+    try:
+        valor_total = float(valor_total)
+        num_parcelas = int(num_parcelas)
+        if valor_total <= 0 or num_parcelas < 2 or num_parcelas > 60:
+            raise ValueError
+    except (ValueError, TypeError):
+        flash('Valores inválidos. Parcelas entre 2 e 60.', 'error')
+        return redirect(url_for('dashboard'))
+
+    data_inicio = datetime.now()
+    if data_str:
+        try:
+            data_inicio = datetime.strptime(data_str, '%Y-%m-%d')
+        except ValueError:
+            pass
+
+    valor_parcela = round(valor_total / num_parcelas, 2)
+    grupo_id = str(uuid.uuid4())
+
+    for i in range(num_parcelas):
+        # Calcula data de cada parcela (mês a mês)
+        mes = data_inicio.month + i
+        ano = data_inicio.year
+        while mes > 12:
+            mes -= 12
+            ano += 1
+        dia = min(data_inicio.day, cal_module.monthrange(ano, mes)[1])
+        data_parcela = datetime(ano, mes, dia)
+
+        transacao = Transacao(
+            tipo=tipo,
+            valor=valor_parcela,
+            descricao=f'{descricao} ({i+1}/{num_parcelas})',
+            data=data_parcela,
+            usuario_id=usuario.id,
+            categoria_id=int(categoria_id) if categoria_id else None,
+            conta_id=int(conta_id) if conta_id else None,
+            parcela_grupo_id=grupo_id,
+            parcela_num=i + 1,
+            parcela_total=num_parcelas
+        )
+        db.session.add(transacao)
+
+    db.session.commit()
+    flash(f'{num_parcelas}x de R$ {valor_parcela:.2f} criadas!', 'success')
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/transferir', methods=['POST'])
+def transferir():
+    usuario = get_user()
+    conta_origem_id = request.form.get('conta_origem', '')
+    conta_destino_id = request.form.get('conta_destino', '')
+    valor = request.form.get('valor', '')
+    descricao = request.form.get('descricao', '').strip() or 'Transferência entre contas'
+
+    try:
+        valor = float(valor)
+        if valor <= 0:
+            raise ValueError
+        conta_origem_id = int(conta_origem_id)
+        conta_destino_id = int(conta_destino_id)
+        if conta_origem_id == conta_destino_id:
+            flash('Contas devem ser diferentes.', 'error')
+            return redirect(url_for('contas'))
+    except (ValueError, TypeError):
+        flash('Valores inválidos.', 'error')
+        return redirect(url_for('contas'))
+
+    conta_origem = Conta.query.get_or_404(conta_origem_id)
+    conta_destino = Conta.query.get_or_404(conta_destino_id)
+
+    # Despesa na conta origem
+    saida = Transacao(
+        tipo='despesa', valor=valor,
+        descricao=f'↗ {descricao} → {conta_destino.nome}',
+        data=datetime.now(), usuario_id=usuario.id,
+        conta_id=conta_origem_id
+    )
+    # Receita na conta destino
+    entrada = Transacao(
+        tipo='receita', valor=valor,
+        descricao=f'↙ {descricao} ← {conta_origem.nome}',
+        data=datetime.now(), usuario_id=usuario.id,
+        conta_id=conta_destino_id
+    )
+    db.session.add(saida)
+    db.session.add(entrada)
+    db.session.commit()
+    flash(f'Transferência de R$ {valor:.2f} realizada!', 'success')
+    return redirect(url_for('contas'))
+
+
+@app.route('/importar', methods=['GET', 'POST'])
+def importar():
+    usuario = get_user()
+    categorias = Categoria.query.filter_by(usuario_id=usuario.id).order_by(Categoria.nome).all()
+    contas = Conta.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+
+    if request.method == 'POST':
+        if 'arquivo' not in request.files:
+            flash('Nenhum arquivo selecionado.', 'error')
+            return redirect(url_for('importar'))
+
+        file = request.files['arquivo']
+        if file.filename == '':
+            flash('Nenhum arquivo selecionado.', 'error')
+            return redirect(url_for('importar'))
+
+        categoria_id = request.form.get('categoria_id', '')
+        conta_id = request.form.get('conta_id', '')
+
+        try:
+            content = file.read().decode('utf-8-sig')
+            reader = csv.DictReader(io.StringIO(content), delimiter=';')
+
+            # Tenta detectar o delimitador
+            if not reader.fieldnames or len(reader.fieldnames) <= 1:
+                content = file.stream.read().decode('utf-8-sig') if hasattr(file.stream, 'read') else content
+                reader = csv.DictReader(io.StringIO(content), delimiter=',')
+
+            count = 0
+            for row in reader:
+                # Tenta pegar os campos com nomes comuns
+                data_str = row.get('Data') or row.get('data') or row.get('DATE') or ''
+                valor_str = row.get('Valor') or row.get('valor') or row.get('VALUE') or row.get('Amount') or ''
+                desc = row.get('Descrição') or row.get('descricao') or row.get('Descricao') or row.get('DESCRIPTION') or row.get('Historico') or ''
+                tipo_str = row.get('Tipo') or row.get('tipo') or row.get('TYPE') or ''
+
+                if not valor_str:
+                    continue
+
+                # Limpa e converte valor
+                valor_str = valor_str.strip().replace('R$', '').replace(' ', '')
+                if ',' in valor_str and '.' in valor_str:
+                    valor_str = valor_str.replace('.', '').replace(',', '.')
+                elif ',' in valor_str:
+                    valor_str = valor_str.replace(',', '.')
+
+                try:
+                    valor = float(valor_str)
+                except ValueError:
+                    continue
+
+                # Determina tipo
+                if tipo_str.lower() in ('receita', 'credito', 'crédito', 'credit', 'c'):
+                    tipo = 'receita'
+                elif tipo_str.lower() in ('despesa', 'debito', 'débito', 'debit', 'd'):
+                    tipo = 'despesa'
+                elif valor < 0:
+                    tipo = 'despesa'
+                    valor = abs(valor)
+                else:
+                    tipo = 'receita'
+
+                # Parse da data
+                data = datetime.now()
+                for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%m/%d/%Y', '%d/%m/%y'):
+                    try:
+                        data = datetime.strptime(data_str.strip(), fmt)
+                        break
+                    except ValueError:
+                        continue
+
+                transacao = Transacao(
+                    tipo=tipo, valor=valor,
+                    descricao=desc.strip()[:200],
+                    data=data, usuario_id=usuario.id,
+                    categoria_id=int(categoria_id) if categoria_id else None,
+                    conta_id=int(conta_id) if conta_id else None
+                )
+                db.session.add(transacao)
+                count += 1
+
+            db.session.commit()
+            flash(f'{count} transações importadas com sucesso!', 'success')
+        except Exception as e:
+            flash(f'Erro ao importar: {str(e)}', 'error')
+
+        return redirect(url_for('importar'))
+
+    return render_template('importar.html', categorias=categorias, contas=contas)
+
+
+@app.route('/api/insights')
+def api_insights():
+    usuario = get_user()
+    resumo = calcular_resumo_semanal(usuario)
+    previsao = calcular_previsao_saldo(usuario)
+    score = calcular_score_financeiro(usuario)
+    alertas = detectar_gastos_incomuns(usuario)
+    return jsonify({
+        'resumo': resumo,
+        'previsao': previsao,
+        'score': score,
+        'alertas': alertas
+    })
 
 
 # =============================================
@@ -781,6 +1374,10 @@ def nova_transacao_fixa():
     )
     db.session.add(transacao_fixa)
     db.session.commit()
+    
+    # Se a transação estiver atrasada e no mesmo mês, force o reprocessamento
+    invalidar_cache_automaticos(usuario.id)
+    
     flash('Transação fixa criada!', 'success')
     return redirect(target_url)
 
@@ -870,6 +1467,7 @@ def novo_orcamento():
         )
         db.session.add(orc)
         db.session.commit()
+        invalidar_cache_automaticos(usuario.id)
         flash('Orçamento criado!', 'success')
     except (ValueError, TypeError):
         flash('Valores inválidos.', 'error')
@@ -950,6 +1548,7 @@ def depositar_meta(id):
     meta = Meta.query.get_or_404(id)
 
     valor = request.form.get('valor', '')
+    descricao = request.form.get('descricao', '').strip()
     try:
         valor = float(valor)
         if valor <= 0:
@@ -957,6 +1556,14 @@ def depositar_meta(id):
     except (ValueError, TypeError):
         flash('Valor inválido.', 'error')
         return redirect(url_for('metas'))
+
+    # Registrar depósito no histórico
+    deposito = DepositoMeta(
+        meta_id=meta.id,
+        valor=valor,
+        descricao=descricao or f'Depósito de R$ {valor:.2f}'
+    )
+    db.session.add(deposito)
 
     meta.valor_atual = min(meta.valor_atual + valor, meta.valor_alvo)
     if meta.valor_atual >= meta.valor_alvo:
@@ -1157,7 +1764,15 @@ def calendario():
             dias[dia]['receitas'] += t.valor
         else:
             dias[dia]['despesas'] += t.valor
-        dias[dia]['transacoes'].append(t)
+        dias[dia]['transacoes'].append({
+            'id': t.id,
+            'tipo': t.tipo,
+            'valor': t.valor,
+            'descricao': t.descricao or '',
+            'categoria': t.categoria_nome,
+            'conta': t.conta.nome if t.conta else '',
+            'data': t.data.strftime('%d/%m/%Y') if t.data else '',
+        })
 
     # Despesas fixas do mês
     transacoes_fixas = TransacaoFixa.query.filter_by(

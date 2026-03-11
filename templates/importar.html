@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block title %}Importar CSV - FinançasPro{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <div>
+            <h1><i class="fas fa-file-import"></i> Importar Transações</h1>
+            <p class="page-subtitle">Importe transações de arquivos CSV do seu banco ou planilha</p>
+        </div>
+    </div>
+
+    <div class="import-container">
+        <form action="{{ url_for('importar') }}" method="POST" enctype="multipart/form-data" class="import-form">
+            <!-- Drop Zone -->
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-content">
+                    <i class="fas fa-cloud-upload-alt drop-icon"></i>
+                    <h3>Arraste seu arquivo CSV aqui</h3>
+                    <p>ou clique para selecionar</p>
+                    <input type="file" name="arquivo" id="fileInput" accept=".csv" required>
+                    <span class="file-name" id="fileName"></span>
+                </div>
+            </div>
+
+            <div class="import-options">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><i class="fas fa-tag"></i> Categoria padrão (opcional)</label>
+                        <select name="categoria_id">
+                            <option value="">Manter do CSV</option>
+                            {% for cat in categorias %}
+                            <option value="{{ cat.id }}">{{ cat.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-wallet"></i> Conta destino (opcional)</label>
+                        <select name="conta_id">
+                            <option value="">Nenhuma</option>
+                            {% for c in contas %}
+                            <option value="{{ c.id }}">{{ c.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block btn-lg">
+                    <i class="fas fa-upload"></i> Importar Transações
+                </button>
+            </div>
+        </form>
+
+        <!-- Help Card -->
+        <div class="section-card" style="margin-top: 24px;">
+            <div class="section-card-header">
+                <h2><i class="fas fa-info-circle"></i> Formato Esperado do CSV</h2>
+            </div>
+            <div style="padding: 20px;">
+                <p style="margin-bottom: 16px; color: var(--text-secondary);">O sistema detecta automaticamente as colunas. Os nomes aceitos são:</p>
+                <div class="csv-format-grid">
+                    <div class="csv-col">
+                        <span class="csv-col-name">Data</span>
+                        <span class="csv-col-desc">DD/MM/YYYY, YYYY-MM-DD</span>
+                    </div>
+                    <div class="csv-col">
+                        <span class="csv-col-name">Valor</span>
+                        <span class="csv-col-desc">Numérico (negativo = despesa)</span>
+                    </div>
+                    <div class="csv-col">
+                        <span class="csv-col-name">Descrição</span>
+                        <span class="csv-col-desc">Texto livre (até 200 chars)</span>
+                    </div>
+                    <div class="csv-col">
+                        <span class="csv-col-name">Tipo</span>
+                        <span class="csv-col-desc">receita/despesa (opcional)</span>
+                    </div>
+                </div>
+                <p style="margin-top: 16px; color: var(--text-secondary); font-size: 0.85em;">
+                    <i class="fas fa-lightbulb" style="color: #ffd93d"></i>
+                    Delimitadores aceitos: <code>;</code> e <code>,</code> — Ambos são detectados automaticamente.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileName = document.getElementById('fileName');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            fileName.textContent = e.dataTransfer.files[0].name;
+            dropZone.classList.add('file-selected');
+        }
+    });
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            fileName.textContent = fileInput.files[0].name;
+            dropZone.classList.add('file-selected');
+        }
+    });
+</script>
+{% endblock %}
