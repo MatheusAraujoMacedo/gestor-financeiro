@@ -68,7 +68,7 @@
         <div class="items-grid">
             {% set user_tags = [] %}
             {% for cat in categorias %}{% endfor %}
-            {% for tag in current_user.tags %}
+            {% for tag in usuario.tags %}
             <div class="item-chip" style="border-color: {{ tag.cor }}40">
                 <span class="tag-dot" style="background: {{ tag.cor }}"></span>
                 <span>{{ tag.nome }}</span>

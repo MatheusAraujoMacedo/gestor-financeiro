@@ -2,42 +2,43 @@
 
 Um **gestor financeiro pessoal** feito para ajudar você a ter clareza do seu dinheiro: registrar entradas e saídas, organizar por contas/categorias e acompanhar metas, orçamentos e despesas recorrentes.
 
-🔗 **Demo (deploy):** https://gestor-financeiro-fohb.onrender.com/
+> ⚠️ **Versão atual:** aplicação local (roda na sua máquina). Futuramente será disponibilizado na Play Store com login e pagamento.
 
 ---
 
 ## 🎯 Objetivo
 
-Esse projeto nasceu com a ideia de transformar o “vou me organizar” em algo prático: **um painel simples e visual** para acompanhar finanças do dia a dia, sem depender de planilhas.
+Esse projeto nasceu com a ideia de transformar o "vou me organizar" em algo prático: **um painel simples e visual** para acompanhar finanças do dia a dia, sem depender de planilhas.
 
 ---
 
 ## ✅ Principais funcionalidades
 
-- **Cadastro e login de usuários**
-- **Dashboard** com visão geral das finanças
-- **Transações** (receitas e despesas) com descrição e data
-- **Contas** (ex.: carteira, conta corrente, poupança, investimento etc.) e cálculo de saldo
-- **Categorias** (receita/despesa) para organizar e analisar melhor
+- **Dashboard** com visão geral das finanças (saldo, receitas, despesas)
+- **Transações** (receitas e despesas) com descrição, data, categoria e conta
+- **Contas** (carteira, conta corrente, poupança, investimento etc.)
+- **Categorias** personalizáveis (receita/despesa)
 - **Tags** para detalhar e filtrar transações
-- **Despesas fixas (recorrentes)** com controle mensal e status (pendente/próximo/atrasado/pago)
-- **Orçamentos por categoria e por mês** (acompanhando gasto vs limite)
-- **Metas** (ex.: juntar dinheiro) com progresso e prazo
-- **Cartões de crédito** com limite, fatura do mês e limite disponível
-- **Comprovantes**: possibilidade de anexar arquivo em transações (quando disponível na interface)
-- **Tema** (ex.: dark/light) por usuário
-
-> Obs.: As funcionalidades acima refletem o que está modelado e preparado no backend do projeto.
+- **Receitas e despesas fixas (recorrentes)** com controle mensal e status
+- **Orçamentos** por categoria e por mês
+- **Metas financeiras** com progresso e prazo
+- **Cartões de crédito** com limite, fatura e limite disponível
+- **Calendário financeiro** para visualizar transações por dia
+- **Relatórios** com gráficos anuais e top categorias
+- **Busca avançada** com filtros (tipo, data, valor)
+- **Exportação CSV** das transações
+- **Comprovantes** — anexar arquivos em transações (via Cloudinary)
+- **Tema escuro/claro** com alternância
 
 ---
 
 ## 🧱 Tecnologias
 
-- **Python + Flask**
-- **Flask-Login** (autenticação)
+- **Python 3 + Flask**
 - **Flask-SQLAlchemy** (ORM)
-- **SQLite / Postgres** (dependendo do ambiente)
+- **SQLite** (banco de dados local)
 - **HTML / CSS / JavaScript** (templates e front)
+- **Cloudinary** (armazenamento de comprovantes)
 
 ---
 
@@ -47,13 +48,17 @@ Esse projeto nasceu com a ideia de transformar o “vou me organizar” em algo 
 - `templates/` — páginas HTML (views)
 - `static/` — arquivos estáticos (CSS/JS/imagens)
 - `requirements.txt` — dependências do projeto
-- `render.yaml` — configuração de deploy (Render)
 
 ---
 
-## 🚀 Como executar o projeto localmente (Manual)
+## 🚀 Como executar na sua máquina
 
-Se você deseja rodar este projeto no seu próprio computador, siga o passo a passo abaixo:
+### Pré-requisitos
+
+- **Python 3.10+** instalado ([Download aqui](https://www.python.org/downloads/))
+- **Git** instalado ([Download aqui](https://git-scm.com/downloads))
+
+### Passo a passo
 
 1. **Clone o repositório:**
    ```bash
@@ -61,17 +66,19 @@ Se você deseja rodar este projeto no seu próprio computador, siga o passo a pa
    cd gestor-financeiro
    ```
 
-2. **Crie e ative um ambiente virtual (recomendado):**
-   - **No Windows:**
-     ```bash
-     python -m venv venv
-     venv\Scripts\activate
-     ```
-   - **No Linux/Mac:**
-     ```bash
-     python3 -m venv venv
-     source venv/bin/activate
-     ```
+2. **Crie e ative um ambiente virtual:**
+
+   **Windows (CMD ou PowerShell):**
+   ```bash
+   python -m venv venv
+   venv\Scripts\activate
+   ```
+
+   **Linux / Mac:**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
 
 3. **Instale as dependências:**
    ```bash
@@ -84,18 +91,27 @@ Se você deseja rodar este projeto no seu próprio computador, siga o passo a pa
    ```
 
 5. **Acesse no navegador:**
-   Abra o seu navegador e acesse: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
-> **Nota:** Por padrão, a aplicação usará o banco de dados local SQLite (`gestor.db`). Não é necessário configurar variáveis de ambiente complexas apenas para testar localmente.
+   Abra: **http://127.0.0.1:5000**
+
+   O app abrirá direto no **Dashboard** — não precisa criar conta nem fazer login!
+
+### 💡 Dicas
+
+- Na primeira execução, o banco de dados e um usuário padrão são **criados automaticamente**
+- Seus dados ficam salvos no arquivo `instance/gestor.db` (SQLite local)
+- Para parar o servidor, pressione `Ctrl+C` no terminal
+- Para rodar novamente, basta repetir os passos 4 e 5 (ativar venv + `python app.py`)
 
 ---
 
-## 🧭 Roadmap (ideias futuras)
+## 🧭 Roadmap (próximas etapas)
 
-- Relatórios mais completos (por período, por conta, por categoria)
-- Exportação/importação de dados (ex.: CSV) com UX melhor
-- Melhorias no dashboard (gráficos e comparativos)
-- Notificações/alertas (despesa fixa próxima do vencimento, orçamento estourando)
+- 📱 Publicar na **Play Store** como app mobile
+- 🔐 Adicionar **sistema de login** e contas de usuário
+- 💳 Implementar **planos e pagamentos**
+- 📊 Relatórios mais completos (por período, por conta)
+- 🔔 Notificações (despesa fixa próxima, orçamento estourando)
 
 ---
 

@@ -1,13 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date, timedelta
-from sqlalchemy import text
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import random
+from datetime import datetime, date
 import calendar as cal_module
 import json
 import csv
@@ -19,20 +12,17 @@ import cloudinary.api
 
 app = Flask(__name__)
 
-# Configurações para deploy / local
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gestor-financeiro-secret-key-2026')
+# Configurações locais
+app.config['SECRET_KEY'] = 'gestor-financeiro-local-key-2026'
 
-# Configuração do Cloudinary (usar variáveis de ambiente para a Cloud Name e chaves)
+# Configuração do Cloudinary
 cloudinary.config(
   cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', ''),
   api_key = os.environ.get('CLOUDINARY_API_KEY', '439547935185919'),
   api_secret = os.environ.get('CLOUDINARY_API_SECRET', '3lPycV2JNER-wcV96W1l1sC4vmg')
 )
 
-db_url = os.environ.get('DATABASE_URL', 'sqlite:///gestor.db')
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
-app.config['SQLALCHEMY_DATABASE_URI'] = db_url
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///gestor.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
@@ -40,11 +30,6 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'webp'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
-
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
-login_manager.login_message = 'Faça login para acessar esta página.'
-login_manager.login_message_category = 'info'
 
 
 # =============================================
@@ -58,17 +43,11 @@ transacao_tags = db.Table('transacao_tags',
 )
 
 
-class Usuario(UserMixin, db.Model):
+class Usuario(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    senha_hash = db.Column(db.String(256), nullable=False)
     tema = db.Column(db.String(10), default='dark')  # 'dark' ou 'light'
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
-
-    # Login por e-mail
-    codigo_verificacao = db.Column(db.String(6), nullable=True)
-    codigo_expiracao = db.Column(db.DateTime, nullable=True)
 
     # Relacionamentos
     transacoes = db.relationship('Transacao', backref='dono', lazy=True, cascade='all, delete-orphan')
@@ -79,12 +58,6 @@ class Usuario(UserMixin, db.Model):
     orcamentos = db.relationship('Orcamento', backref='dono', lazy=True, cascade='all, delete-orphan')
     metas = db.relationship('Meta', backref='dono', lazy=True, cascade='all, delete-orphan')
     cartoes = db.relationship('CartaoCredito', backref='dono', lazy=True, cascade='all, delete-orphan')
-
-    def set_senha(self, senha):
-        self.senha_hash = generate_password_hash(senha)
-
-    def check_senha(self, senha):
-        return check_password_hash(self.senha_hash, senha)
 
 
 class Conta(db.Model):
@@ -334,63 +307,33 @@ class CartaoCredito(db.Model):
         return icones.get(self.bandeira, 'fa-credit-card')
 
 
-@login_manager.user_loader
-def load_user(user_id):
-    return db.session.get(Usuario, int(user_id))
-
-
-# Garantir que as tabelas do banco de dados sejam criadas (útil para o Render / PostgreSQL)
+# Criar tabelas do banco de dados
 with app.app_context():
     db.create_all()
-    # Adicionar colunas novas se não existirem
-    try:
-        db.session.execute(text('ALTER TABLE usuario ADD COLUMN codigo_verificacao VARCHAR(6)'))
-        db.session.execute(text('ALTER TABLE usuario ADD COLUMN codigo_expiracao TIMESTAMP'))
+
+
+# =============================================
+# HELPER: USUÁRIO ÚNICO LOCAL
+# =============================================
+
+def get_user():
+    """Retorna o usuário único local, criando-o automaticamente se não existir."""
+    usuario = Usuario.query.first()
+    if not usuario:
+        usuario = Usuario(nome='Usuário')
+        db.session.add(usuario)
+        db.session.flush()
+
+        # Criar categorias padrão
+        criar_categorias_padrao(usuario.id)
+        criar_conta_padrao(usuario.id)
+
         db.session.commit()
-    except Exception:
-        db.session.rollback()
+    return usuario
 
-
-# =============================================
-# FUNÇÕES DE E-MAIL E AUXILIARES
-# =============================================
-
-def enviar_email_verificacao(email_destino, codigo):
-    email_user = os.environ.get('EMAIL_USER', 'juninarroba48@gmail.com')
-    email_pass = os.environ.get('EMAIL_PASSWORD', 'swoy ujtl ulnl cjme')
-
-    if not email_user or not email_pass:
-        print("Erro: Credenciais de e-mail não configuradas (EMAIL_USER ou EMAIL_PASSWORD)")
-        return False
-
-    remetente = email_user
-    msg = MIMEMultipart()
-    msg['From'] = remetente
-    msg['To'] = email_destino
-    msg['Subject'] = 'Seu código de verificação - Gestor Financeiro'
-
-    corpo = f"""Olá,
-
-Seu código de verificação para acesso ao Gestor Financeiro é: {codigo}
-
-Este código expira em 10 minutos. Se você não solicitou este acesso, por favor ignore este e-mail.
-"""
-    msg.attach(MIMEText(corpo, 'plain'))
-
-    try:
-        # Define um timeout de 15 segundos para evitar que o worker do Gunicorn/Render trave infinitamente
-        servidor = smtplib.SMTP('smtp.gmail.com', 587, timeout=15)
-        servidor.starttls()
-        servidor.login(email_user, email_pass)
-        servidor.sendmail(remetente, email_destino, msg.as_string())
-        servidor.quit()
-        return True
-    except Exception as e:
-        print(f"Erro ao enviar e-mail: {e}")
-        return False
 
 def criar_categorias_padrao(usuario_id):
-    """Cria categorias padrão para um novo usuário."""
+    """Cria categorias padrão para o usuário."""
     categorias_padrao = [
         ('Salário', 'receita', 'fa-money-bill-wave', '#00d68f'),
         ('Freelance', 'receita', 'fa-laptop-code', '#45b7d1'),
@@ -413,7 +356,7 @@ def criar_categorias_padrao(usuario_id):
 
 
 def criar_conta_padrao(usuario_id):
-    """Cria conta padrão 'Carteira' para um novo usuário."""
+    """Cria conta padrão 'Carteira' para o usuário."""
     conta = Conta(
         nome='Carteira',
         tipo='dinheiro',
@@ -425,149 +368,19 @@ def criar_conta_padrao(usuario_id):
     db.session.add(conta)
 
 
+# Injetar o usuário em todos os templates
+@app.context_processor
+def inject_user():
+    return dict(usuario=get_user())
+
+
 # =============================================
-# ROTAS PÚBLICAS
+# ROTAS PRINCIPAIS
 # =============================================
 
 @app.route('/')
 def home():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    return render_template('index.html')
-
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-
-    if request.method == 'POST':
-        email = request.form.get('email', '').strip()
-        senha = request.form.get('senha', '')
-        usuario = Usuario.query.filter_by(email=email).first()
-
-        if usuario and usuario.check_senha(senha):
-            login_user(usuario)
-            flash('Login realizado com sucesso!', 'success')
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('dashboard'))
-        else:
-            flash('Email ou senha incorretos.', 'error')
-
-    return render_template('login.html')
-
-
-@app.route('/api/login/request_code', methods=['POST'])
-def api_request_code():
-    try:
-        data = request.get_json()
-        if not data or 'email' not in data:
-            return jsonify({'status': 'error', 'message': 'E-mail não fornecido'}), 400
-        
-        email = data['email'].strip()
-        usuario = Usuario.query.filter_by(email=email).first()
-        
-        if not usuario:
-            return jsonify({'status': 'error', 'message': 'E-mail não encontrado no sistema'}), 404
-        
-        codigo = str(random.randint(100000, 999999))
-        expiracao = datetime.utcnow() + timedelta(minutes=10)
-        
-        usuario.codigo_verificacao = codigo
-        usuario.codigo_expiracao = expiracao
-        db.session.commit()
-        
-        sucesso = enviar_email_verificacao(usuario.email, codigo)
-        if sucesso:
-            return jsonify({'status': 'success', 'message': 'Código enviado com sucesso'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Erro ao enviar o e-mail. Verifique as configurações.'}), 500
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'status': 'error', 'message': f'Erro interno: {str(e)}'}), 500
-
-
-@app.route('/api/login/verify_code', methods=['POST'])
-def api_verify_code():
-    data = request.get_json()
-    if not data or 'email' not in data or 'codigo' not in data:
-        return jsonify({'status': 'error', 'message': 'E-mail ou código não fornecido'}), 400
-    
-    email = data['email'].strip()
-    codigo = data['codigo'].strip()
-    
-    usuario = Usuario.query.filter_by(email=email).first()
-    
-    if not usuario:
-        return jsonify({'status': 'error', 'message': 'Usuário não encontrado'}), 404
-        
-    if not usuario.codigo_verificacao or not usuario.codigo_expiracao:
-        return jsonify({'status': 'error', 'message': 'Nenhum código foi solicitado'}), 400
-        
-    if usuario.codigo_verificacao != codigo:
-        return jsonify({'status': 'error', 'message': 'Código incorreto'}), 400
-        
-    if datetime.utcnow() > usuario.codigo_expiracao:
-        return jsonify({'status': 'error', 'message': 'Código expirado. Solicite um novo.'}), 400
-        
-    # Sucesso
-    usuario.codigo_verificacao = None
-    usuario.codigo_expiracao = None
-    db.session.commit()
-    
-    login_user(usuario)
-    return jsonify({'status': 'success', 'message': 'Login realizado com sucesso'})
-
-
-@app.route('/cadastro', methods=['GET', 'POST'])
-def cadastro():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-
-    if request.method == 'POST':
-        nome = request.form.get('nome', '').strip()
-        email = request.form.get('email', '').strip()
-        senha = request.form.get('senha', '')
-
-        if not nome or not email or not senha:
-            flash('Preencha todos os campos.', 'error')
-            return render_template('cadastro.html')
-
-        if len(senha) < 6:
-            flash('A senha deve ter pelo menos 6 caracteres.', 'error')
-            return render_template('cadastro.html')
-
-        if Usuario.query.filter_by(email=email).first():
-            flash('Este email já está cadastrado.', 'error')
-            return render_template('cadastro.html')
-
-        novo_usuario = Usuario(nome=nome, email=email)
-        novo_usuario.set_senha(senha)
-
-        try:
-            db.session.add(novo_usuario)
-            db.session.flush()  # get the ID before creating defaults
-
-            criar_categorias_padrao(novo_usuario.id)
-            criar_conta_padrao(novo_usuario.id)
-
-            db.session.commit()
-            flash('Conta criada com sucesso! Faça login.', 'success')
-            return redirect(url_for('login'))
-        except Exception:
-            db.session.rollback()
-            flash('Erro ao criar conta. Tente novamente.', 'error')
-
-    return render_template('cadastro.html')
-
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    flash('Você saiu da sua conta.', 'info')
-    return redirect(url_for('home'))
+    return redirect(url_for('dashboard'))
 
 
 # =============================================
@@ -575,14 +388,14 @@ def logout():
 # =============================================
 
 @app.route('/dashboard')
-@login_required
 def dashboard():
+    usuario = get_user()
     mes_filtro = request.args.get('mes', '')
     ano_filtro = request.args.get('ano', '')
     categoria_filtro = request.args.get('categoria', '')
     conta_filtro = request.args.get('conta', '')
 
-    query = Transacao.query.filter_by(usuario_id=current_user.id)
+    query = Transacao.query.filter_by(usuario_id=usuario.id)
 
     if mes_filtro and ano_filtro:
         try:
@@ -616,9 +429,9 @@ def dashboard():
     total_despesas = sum(t.valor for t in transacoes if t.tipo == 'despesa')
     saldo = total_receitas - total_despesas
 
-    categorias = Categoria.query.filter_by(usuario_id=current_user.id).order_by(Categoria.nome).all()
-    contas = Conta.query.filter_by(usuario_id=current_user.id, ativo=True).all()
-    tags = Tag.query.filter_by(usuario_id=current_user.id).order_by(Tag.nome).all()
+    categorias = Categoria.query.filter_by(usuario_id=usuario.id).order_by(Categoria.nome).all()
+    contas = Conta.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+    tags = Tag.query.filter_by(usuario_id=usuario.id).order_by(Tag.nome).all()
 
     # Gráfico de pizza (despesas por categoria)
     categorias_grafico = {}
@@ -628,20 +441,20 @@ def dashboard():
             categorias_grafico[nome] = categorias_grafico.get(nome, 0) + t.valor
 
     # Anos para filtro
-    todas = Transacao.query.filter_by(usuario_id=current_user.id).all()
+    todas = Transacao.query.filter_by(usuario_id=usuario.id).all()
     anos = sorted(set(t.data.year for t in todas), reverse=True) or [datetime.now().year]
 
     # Orçamentos do mês atual
     hoje = date.today()
     orcamentos = Orcamento.query.filter_by(
-        usuario_id=current_user.id,
+        usuario_id=usuario.id,
         mes=hoje.month,
         ano=hoje.year
     ).all()
 
     # Despesas fixas pendentes
     transacoes_fixas = TransacaoFixa.query.filter_by(
-        usuario_id=current_user.id,
+        usuario_id=usuario.id,
         ativo=True
     ).all()
     pendentes = [d for d in transacoes_fixas if d.status_atual in ('pendente', 'proximo', 'atrasado')]
@@ -673,8 +486,8 @@ def dashboard():
 # =============================================
 
 @app.route('/transacao/nova', methods=['POST'])
-@login_required
 def nova_transacao():
+    usuario = get_user()
     tipo = request.form.get('tipo', '').strip().lower()
     valor = request.form.get('valor', '')
     categoria_id = request.form.get('categoria_id', '')
@@ -707,14 +520,14 @@ def nova_transacao():
         valor=valor,
         descricao=descricao,
         data=data,
-        usuario_id=current_user.id,
+        usuario_id=usuario.id,
         categoria_id=int(categoria_id) if categoria_id else None,
         conta_id=int(conta_id) if conta_id else None
     )
 
     # Adicionar tags
     if tag_ids:
-        tags = Tag.query.filter(Tag.id.in_(tag_ids), Tag.usuario_id == current_user.id).all()
+        tags = Tag.query.filter(Tag.id.in_(tag_ids), Tag.usuario_id == usuario.id).all()
         transacao.tags = tags
 
     db.session.add(transacao)
@@ -724,12 +537,9 @@ def nova_transacao():
 
 
 @app.route('/transacao/editar/<int:id>', methods=['POST'])
-@login_required
 def editar_transacao(id):
+    usuario = get_user()
     transacao = Transacao.query.get_or_404(id)
-    if transacao.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('dashboard'))
 
     transacao.tipo = request.form.get('tipo', transacao.tipo).strip().lower()
     transacao.descricao = request.form.get('descricao', '').strip()
@@ -755,7 +565,7 @@ def editar_transacao(id):
 
     tag_ids = request.form.getlist('tags')
     if tag_ids:
-        tags = Tag.query.filter(Tag.id.in_(tag_ids), Tag.usuario_id == current_user.id).all()
+        tags = Tag.query.filter(Tag.id.in_(tag_ids), Tag.usuario_id == usuario.id).all()
         transacao.tags = tags
     else:
         transacao.tags = []
@@ -766,13 +576,8 @@ def editar_transacao(id):
 
 
 @app.route('/transacao/excluir/<int:id>', methods=['POST'])
-@login_required
 def excluir_transacao(id):
     transacao = Transacao.query.get_or_404(id)
-    if transacao.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('dashboard'))
-
     db.session.delete(transacao)
     db.session.commit()
     flash('Transação excluída!', 'success')
@@ -784,15 +589,15 @@ def excluir_transacao(id):
 # =============================================
 
 @app.route('/contas')
-@login_required
 def contas():
-    contas = Conta.query.filter_by(usuario_id=current_user.id).all()
+    usuario = get_user()
+    contas = Conta.query.filter_by(usuario_id=usuario.id).all()
     return render_template('contas.html', contas=contas)
 
 
 @app.route('/conta/nova', methods=['POST'])
-@login_required
 def nova_conta():
+    usuario = get_user()
     nome = request.form.get('nome', '').strip()
     tipo = request.form.get('tipo', 'corrente')
     saldo_inicial = request.form.get('saldo_inicial', '0')
@@ -809,7 +614,7 @@ def nova_conta():
         saldo_inicial = 0.0
 
     conta = Conta(nome=nome, tipo=tipo, saldo_inicial=saldo_inicial,
-                  cor=cor, icone=icone, usuario_id=current_user.id)
+                  cor=cor, icone=icone, usuario_id=usuario.id)
     db.session.add(conta)
     db.session.commit()
     flash('Conta criada!', 'success')
@@ -817,12 +622,8 @@ def nova_conta():
 
 
 @app.route('/conta/editar/<int:id>', methods=['POST'])
-@login_required
 def editar_conta(id):
     conta = Conta.query.get_or_404(id)
-    if conta.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('contas'))
 
     conta.nome = request.form.get('nome', conta.nome).strip()
     conta.tipo = request.form.get('tipo', conta.tipo)
@@ -840,13 +641,8 @@ def editar_conta(id):
 
 
 @app.route('/conta/excluir/<int:id>', methods=['POST'])
-@login_required
 def excluir_conta(id):
     conta = Conta.query.get_or_404(id)
-    if conta.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('contas'))
-
     db.session.delete(conta)
     db.session.commit()
     flash('Conta excluída!', 'success')
@@ -858,15 +654,15 @@ def excluir_conta(id):
 # =============================================
 
 @app.route('/categorias')
-@login_required
 def categorias():
-    cats = Categoria.query.filter_by(usuario_id=current_user.id).order_by(Categoria.tipo, Categoria.nome).all()
+    usuario = get_user()
+    cats = Categoria.query.filter_by(usuario_id=usuario.id).order_by(Categoria.tipo, Categoria.nome).all()
     return render_template('categorias.html', categorias=cats)
 
 
 @app.route('/categoria/nova', methods=['POST'])
-@login_required
 def nova_categoria():
+    usuario = get_user()
     nome = request.form.get('nome', '').strip()
     tipo = request.form.get('tipo', 'despesa')
     icone = request.form.get('icone', 'fa-tag')
@@ -876,7 +672,7 @@ def nova_categoria():
         flash('Informe o nome da categoria.', 'error')
         return redirect(url_for('categorias'))
 
-    cat = Categoria(nome=nome, tipo=tipo, icone=icone, cor=cor, usuario_id=current_user.id)
+    cat = Categoria(nome=nome, tipo=tipo, icone=icone, cor=cor, usuario_id=usuario.id)
     db.session.add(cat)
     db.session.commit()
     flash('Categoria criada!', 'success')
@@ -884,13 +680,8 @@ def nova_categoria():
 
 
 @app.route('/categoria/excluir/<int:id>', methods=['POST'])
-@login_required
 def excluir_categoria(id):
     cat = Categoria.query.get_or_404(id)
-    if cat.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('categorias'))
-
     db.session.delete(cat)
     db.session.commit()
     flash('Categoria excluída!', 'success')
@@ -902,8 +693,8 @@ def excluir_categoria(id):
 # =============================================
 
 @app.route('/tag/nova', methods=['POST'])
-@login_required
 def nova_tag():
+    usuario = get_user()
     nome = request.form.get('nome', '').strip()
     cor = request.form.get('cor', '#45b7d1')
 
@@ -911,7 +702,7 @@ def nova_tag():
         flash('Informe o nome da tag.', 'error')
         return redirect(url_for('categorias'))
 
-    tag = Tag(nome=nome, cor=cor, usuario_id=current_user.id)
+    tag = Tag(nome=nome, cor=cor, usuario_id=usuario.id)
     db.session.add(tag)
     db.session.commit()
     flash('Tag criada!', 'success')
@@ -919,13 +710,8 @@ def nova_tag():
 
 
 @app.route('/tag/excluir/<int:id>', methods=['POST'])
-@login_required
 def excluir_tag(id):
     tag = Tag.query.get_or_404(id)
-    if tag.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('categorias'))
-
     db.session.delete(tag)
     db.session.commit()
     flash('Tag excluída!', 'success')
@@ -933,19 +719,18 @@ def excluir_tag(id):
 
 
 # =============================================
-# =============================================
 # TRANSAÇÕES FIXAS
 # =============================================
 
 @app.route('/transacoes-fixas/<tipo>')
-@login_required
 def transacoes_fixas(tipo):
+    usuario = get_user()
     if tipo not in ('receita', 'despesa'):
         tipo = 'despesa'
-        
-    transacoes = TransacaoFixa.query.filter_by(usuario_id=current_user.id, tipo=tipo).order_by(TransacaoFixa.dia_vencimento).all()
-    categorias = Categoria.query.filter_by(usuario_id=current_user.id, tipo=tipo).all()
-    contas = Conta.query.filter_by(usuario_id=current_user.id, ativo=True).all()
+
+    transacoes = TransacaoFixa.query.filter_by(usuario_id=usuario.id, tipo=tipo).order_by(TransacaoFixa.dia_vencimento).all()
+    categorias = Categoria.query.filter_by(usuario_id=usuario.id, tipo=tipo).all()
+    contas = Conta.query.filter_by(usuario_id=usuario.id, ativo=True).all()
     hoje = date.today()
 
     total_fixo = sum(d.valor for d in transacoes if d.ativo)
@@ -964,8 +749,8 @@ def transacoes_fixas(tipo):
 
 
 @app.route('/transacao-fixa/nova', methods=['POST'])
-@login_required
 def nova_transacao_fixa():
+    usuario = get_user()
     nome = request.form.get('nome', '').strip()
     valor = request.form.get('valor', '')
     dia = request.form.get('dia_vencimento', '')
@@ -992,7 +777,7 @@ def nova_transacao_fixa():
         nome=nome, valor=valor, dia_vencimento=dia, tipo=tipo,
         categoria_id=int(categoria_id) if categoria_id else None,
         conta_id=int(conta_id) if conta_id else None,
-        usuario_id=current_user.id
+        usuario_id=usuario.id
     )
     db.session.add(transacao_fixa)
     db.session.commit()
@@ -1001,12 +786,9 @@ def nova_transacao_fixa():
 
 
 @app.route('/transacao-fixa/pagar/<int:id>', methods=['POST'])
-@login_required
 def pagar_transacao_fixa(id):
+    usuario = get_user()
     transacao_fixa = TransacaoFixa.query.get_or_404(id)
-    if transacao_fixa.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('dashboard'))
 
     target_url = url_for('transacoes_fixas', tipo=transacao_fixa.tipo)
 
@@ -1019,7 +801,7 @@ def pagar_transacao_fixa(id):
         valor=transacao_fixa.valor,
         descricao=f'Fixo: {transacao_fixa.nome}',
         data=datetime.now(),
-        usuario_id=current_user.id,
+        usuario_id=usuario.id,
         categoria_id=transacao_fixa.categoria_id,
         conta_id=transacao_fixa.conta_id
     )
@@ -1030,15 +812,9 @@ def pagar_transacao_fixa(id):
 
 
 @app.route('/transacao-fixa/excluir/<int:id>', methods=['POST'])
-@login_required
 def excluir_transacao_fixa(id):
     transacao_fixa = TransacaoFixa.query.get_or_404(id)
     tipo = transacao_fixa.tipo
-    
-    if transacao_fixa.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('dashboard'))
-
     db.session.delete(transacao_fixa)
     db.session.commit()
     flash('Transação fixa excluída!', 'success')
@@ -1050,16 +826,16 @@ def excluir_transacao_fixa(id):
 # =============================================
 
 @app.route('/orcamentos')
-@login_required
 def orcamentos():
+    usuario = get_user()
     hoje = date.today()
     mes = request.args.get('mes', hoje.month, type=int)
     ano = request.args.get('ano', hoje.year, type=int)
 
     orcs = Orcamento.query.filter_by(
-        usuario_id=current_user.id, mes=mes, ano=ano
+        usuario_id=usuario.id, mes=mes, ano=ano
     ).all()
-    categorias = Categoria.query.filter_by(usuario_id=current_user.id, tipo='despesa').all()
+    categorias = Categoria.query.filter_by(usuario_id=usuario.id, tipo='despesa').all()
 
     # Categorias que já têm orçamento
     cats_com_orc = {o.categoria_id for o in orcs}
@@ -1077,8 +853,8 @@ def orcamentos():
 
 
 @app.route('/orcamento/novo', methods=['POST'])
-@login_required
 def novo_orcamento():
+    usuario = get_user()
     categoria_id = request.form.get('categoria_id', '')
     valor_limite = request.form.get('valor_limite', '')
     mes = request.form.get('mes', '')
@@ -1090,7 +866,7 @@ def novo_orcamento():
             valor_limite=float(valor_limite),
             mes=int(mes),
             ano=int(ano),
-            usuario_id=current_user.id
+            usuario_id=usuario.id
         )
         db.session.add(orc)
         db.session.commit()
@@ -1102,13 +878,8 @@ def novo_orcamento():
 
 
 @app.route('/orcamento/excluir/<int:id>', methods=['POST'])
-@login_required
 def excluir_orcamento(id):
     orc = Orcamento.query.get_or_404(id)
-    if orc.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('orcamentos'))
-
     db.session.delete(orc)
     db.session.commit()
     flash('Orçamento excluído!', 'success')
@@ -1120,10 +891,10 @@ def excluir_orcamento(id):
 # =============================================
 
 @app.route('/metas')
-@login_required
 def metas():
-    metas_ativas = Meta.query.filter_by(usuario_id=current_user.id, concluida=False).order_by(Meta.prazo).all()
-    metas_concluidas = Meta.query.filter_by(usuario_id=current_user.id, concluida=True).all()
+    usuario = get_user()
+    metas_ativas = Meta.query.filter_by(usuario_id=usuario.id, concluida=False).order_by(Meta.prazo).all()
+    metas_concluidas = Meta.query.filter_by(usuario_id=usuario.id, concluida=True).all()
 
     total_alvo = sum(m.valor_alvo for m in metas_ativas)
     total_acumulado = sum(m.valor_atual for m in metas_ativas)
@@ -1136,8 +907,8 @@ def metas():
 
 
 @app.route('/meta/nova', methods=['POST'])
-@login_required
 def nova_meta():
+    usuario = get_user()
     nome = request.form.get('nome', '').strip()
     descricao = request.form.get('descricao', '').strip()
     valor_alvo = request.form.get('valor_alvo', '')
@@ -1166,7 +937,7 @@ def nova_meta():
 
     meta = Meta(
         nome=nome, descricao=descricao, valor_alvo=valor_alvo,
-        prazo=prazo, icone=icone, cor=cor, usuario_id=current_user.id
+        prazo=prazo, icone=icone, cor=cor, usuario_id=usuario.id
     )
     db.session.add(meta)
     db.session.commit()
@@ -1175,12 +946,8 @@ def nova_meta():
 
 
 @app.route('/meta/depositar/<int:id>', methods=['POST'])
-@login_required
 def depositar_meta(id):
     meta = Meta.query.get_or_404(id)
-    if meta.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('metas'))
 
     valor = request.form.get('valor', '')
     try:
@@ -1203,13 +970,8 @@ def depositar_meta(id):
 
 
 @app.route('/meta/excluir/<int:id>', methods=['POST'])
-@login_required
 def excluir_meta(id):
     meta = Meta.query.get_or_404(id)
-    if meta.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('metas'))
-
     db.session.delete(meta)
     db.session.commit()
     flash('Meta excluída!', 'success')
@@ -1221,16 +983,16 @@ def excluir_meta(id):
 # =============================================
 
 @app.route('/cartoes')
-@login_required
 def cartoes():
-    cards = CartaoCredito.query.filter_by(usuario_id=current_user.id).all()
-    contas = Conta.query.filter_by(usuario_id=current_user.id, ativo=True).all()
+    usuario = get_user()
+    cards = CartaoCredito.query.filter_by(usuario_id=usuario.id).all()
+    contas = Conta.query.filter_by(usuario_id=usuario.id, ativo=True).all()
     return render_template('cartoes.html', cartoes=cards, contas=contas)
 
 
 @app.route('/cartao/novo', methods=['POST'])
-@login_required
 def novo_cartao():
+    usuario = get_user()
     nome = request.form.get('nome', '').strip()
     bandeira = request.form.get('bandeira', 'Visa')
     limite = request.form.get('limite', '')
@@ -1258,7 +1020,7 @@ def novo_cartao():
         saldo_inicial=0.0,
         cor=cor,
         icone='fa-credit-card',
-        usuario_id=current_user.id
+        usuario_id=usuario.id
     )
     db.session.add(conta_cartao)
     db.session.flush()
@@ -1266,7 +1028,7 @@ def novo_cartao():
     cartao = CartaoCredito(
         nome=nome, bandeira=bandeira, limite=limite,
         dia_fechamento=dia_fechamento, dia_vencimento=dia_vencimento,
-        cor=cor, conta_id=conta_cartao.id, usuario_id=current_user.id
+        cor=cor, conta_id=conta_cartao.id, usuario_id=usuario.id
     )
     db.session.add(cartao)
     db.session.commit()
@@ -1275,13 +1037,8 @@ def novo_cartao():
 
 
 @app.route('/cartao/excluir/<int:id>', methods=['POST'])
-@login_required
 def excluir_cartao(id):
     cartao = CartaoCredito.query.get_or_404(id)
-    if cartao.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('cartoes'))
-
     db.session.delete(cartao)
     db.session.commit()
     flash('Cartão excluído!', 'success')
@@ -1293,8 +1050,8 @@ def excluir_cartao(id):
 # =============================================
 
 @app.route('/relatorios')
-@login_required
 def relatorios():
+    usuario = get_user()
     hoje = date.today()
     ano = request.args.get('ano', hoje.year, type=int)
 
@@ -1302,7 +1059,7 @@ def relatorios():
     meses_dados = []
     for m in range(1, 13):
         transacoes_mes = Transacao.query.filter_by(
-            usuario_id=current_user.id
+            usuario_id=usuario.id
         ).filter(
             db.extract('month', Transacao.data) == m,
             db.extract('year', Transacao.data) == ano
@@ -1324,7 +1081,7 @@ def relatorios():
 
     # Top 5 categorias de despesa do ano
     todas_despesas = Transacao.query.filter_by(
-        usuario_id=current_user.id, tipo='despesa'
+        usuario_id=usuario.id, tipo='despesa'
     ).filter(
         db.extract('year', Transacao.data) == ano
     ).all()
@@ -1337,7 +1094,7 @@ def relatorios():
 
     # Top 5 categorias de receita do ano
     todas_receitas = Transacao.query.filter_by(
-        usuario_id=current_user.id, tipo='receita'
+        usuario_id=usuario.id, tipo='receita'
     ).filter(
         db.extract('year', Transacao.data) == ano
     ).all()
@@ -1356,7 +1113,7 @@ def relatorios():
         saldo_acumulado.append(round(acum, 2))
 
     # Anos disponíveis
-    todas = Transacao.query.filter_by(usuario_id=current_user.id).all()
+    todas = Transacao.query.filter_by(usuario_id=usuario.id).all()
     anos = sorted(set(t.data.year for t in todas), reverse=True) or [hoje.year]
 
     return render_template('relatorios.html',
@@ -1374,8 +1131,8 @@ def relatorios():
 # =============================================
 
 @app.route('/calendario')
-@login_required
 def calendario():
+    usuario = get_user()
     hoje = date.today()
     mes = request.args.get('mes', hoje.month, type=int)
     ano = request.args.get('ano', hoje.year, type=int)
@@ -1385,7 +1142,7 @@ def calendario():
 
     # Transações do mês agrupadas por dia
     transacoes_mes = Transacao.query.filter_by(
-        usuario_id=current_user.id
+        usuario_id=usuario.id
     ).filter(
         db.extract('month', Transacao.data) == mes,
         db.extract('year', Transacao.data) == ano
@@ -1404,7 +1161,7 @@ def calendario():
 
     # Despesas fixas do mês
     transacoes_fixas = TransacaoFixa.query.filter_by(
-        usuario_id=current_user.id, ativo=True
+        usuario_id=usuario.id, ativo=True
     ).all()
     vencimentos = {d.dia_vencimento: d for d in transacoes_fixas}
 
@@ -1432,8 +1189,8 @@ def calendario():
 # =============================================
 
 @app.route('/busca')
-@login_required
 def busca():
+    usuario = get_user()
     q = request.args.get('q', '').strip()
     tipo = request.args.get('tipo', '')
     data_inicio = request.args.get('data_inicio', '')
@@ -1445,7 +1202,7 @@ def busca():
     total = 0
 
     if q or tipo or data_inicio or data_fim or valor_min or valor_max:
-        query = Transacao.query.filter_by(usuario_id=current_user.id)
+        query = Transacao.query.filter_by(usuario_id=usuario.id)
 
         if q:
             query = query.filter(
@@ -1498,13 +1255,13 @@ def busca():
 # =============================================
 
 @app.route('/perfil')
-@login_required
 def perfil():
-    total_transacoes = Transacao.query.filter_by(usuario_id=current_user.id).count()
-    total_receitas = sum(t.valor for t in Transacao.query.filter_by(usuario_id=current_user.id, tipo='receita').all())
-    total_despesas = sum(t.valor for t in Transacao.query.filter_by(usuario_id=current_user.id, tipo='despesa').all())
-    total_contas = Conta.query.filter_by(usuario_id=current_user.id).count()
-    metas_concluidas = Meta.query.filter_by(usuario_id=current_user.id, concluida=True).count()
+    usuario = get_user()
+    total_transacoes = Transacao.query.filter_by(usuario_id=usuario.id).count()
+    total_receitas = sum(t.valor for t in Transacao.query.filter_by(usuario_id=usuario.id, tipo='receita').all())
+    total_despesas = sum(t.valor for t in Transacao.query.filter_by(usuario_id=usuario.id, tipo='despesa').all())
+    total_contas = Conta.query.filter_by(usuario_id=usuario.id).count()
+    metas_concluidas = Meta.query.filter_by(usuario_id=usuario.id, concluida=True).count()
 
     return render_template('perfil.html',
                            total_transacoes=total_transacoes,
@@ -1515,51 +1272,17 @@ def perfil():
 
 
 @app.route('/perfil/editar', methods=['POST'])
-@login_required
 def editar_perfil():
+    usuario = get_user()
     nome = request.form.get('nome', '').strip()
-    email = request.form.get('email', '').strip()
 
-    if not nome or not email:
-        flash('Nome e email são obrigatórios.', 'error')
+    if not nome:
+        flash('Nome é obrigatório.', 'error')
         return redirect(url_for('perfil'))
 
-    # Check email unique
-    if email != current_user.email:
-        exists = Usuario.query.filter_by(email=email).first()
-        if exists:
-            flash('Este email já está em uso.', 'error')
-            return redirect(url_for('perfil'))
-
-    current_user.nome = nome
-    current_user.email = email
+    usuario.nome = nome
     db.session.commit()
     flash('Perfil atualizado!', 'success')
-    return redirect(url_for('perfil'))
-
-
-@app.route('/perfil/senha', methods=['POST'])
-@login_required
-def alterar_senha():
-    senha_atual = request.form.get('senha_atual', '')
-    nova_senha = request.form.get('nova_senha', '')
-    confirmar = request.form.get('confirmar_senha', '')
-
-    if not current_user.check_senha(senha_atual):
-        flash('Senha atual incorreta.', 'error')
-        return redirect(url_for('perfil'))
-
-    if len(nova_senha) < 6:
-        flash('Nova senha deve ter pelo menos 6 caracteres.', 'error')
-        return redirect(url_for('perfil'))
-
-    if nova_senha != confirmar:
-        flash('Confirmação de senha não confere.', 'error')
-        return redirect(url_for('perfil'))
-
-    current_user.set_senha(nova_senha)
-    db.session.commit()
-    flash('Senha alterada com sucesso!', 'success')
     return redirect(url_for('perfil'))
 
 
@@ -1568,11 +1291,11 @@ def alterar_senha():
 # =============================================
 
 @app.route('/tema/toggle', methods=['POST'])
-@login_required
 def toggle_tema():
-    current_user.tema = 'light' if current_user.tema == 'dark' else 'dark'
+    usuario = get_user()
+    usuario.tema = 'light' if usuario.tema == 'dark' else 'dark'
     db.session.commit()
-    return jsonify({'tema': current_user.tema})
+    return jsonify({'tema': usuario.tema})
 
 
 # =============================================
@@ -1580,12 +1303,12 @@ def toggle_tema():
 # =============================================
 
 @app.route('/exportar/csv')
-@login_required
 def exportar_csv():
+    usuario = get_user()
     mes = request.args.get('mes', None, type=int)
     ano = request.args.get('ano', None, type=int)
 
-    query = Transacao.query.filter_by(usuario_id=current_user.id)
+    query = Transacao.query.filter_by(usuario_id=usuario.id)
     if mes and ano:
         query = query.filter(
             db.extract('month', Transacao.data) == mes,
@@ -1606,7 +1329,7 @@ def exportar_csv():
             t.tipo,
             f'{t.valor:.2f}',
             t.categoria_nome,
-            t.conta_rel.nome if t.conta_rel else '',
+            t.conta.nome if t.conta else '',
             t.descricao or ''
         ])
 
@@ -1628,12 +1351,8 @@ def allowed_file(filename):
 
 
 @app.route('/transacao/comprovante/<int:id>', methods=['POST'])
-@login_required
 def upload_comprovante(id):
     transacao = Transacao.query.get_or_404(id)
-    if transacao.usuario_id != current_user.id:
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('dashboard'))
 
     if 'comprovante' not in request.files:
         flash('Nenhum arquivo selecionado.', 'error')
@@ -1646,12 +1365,9 @@ def upload_comprovante(id):
 
     if file and allowed_file(file.filename):
         try:
-            # Enviar para o Cloudinary (detectando o tipo do arquivo automaticamente)
+            # Enviar para o Cloudinary
             upload_result = cloudinary.uploader.upload(file, resource_type='auto')
-            
-            # Pegar a URL segura que o Cloudinary retornou
             url_comprovante = upload_result.get('secure_url')
-            
             transacao.comprovante = url_comprovante
             db.session.commit()
             flash('Comprovante enviado!', 'success')

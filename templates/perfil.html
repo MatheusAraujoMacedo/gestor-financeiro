@@ -16,10 +16,9 @@
             <div class="profile-avatar">
                 <i class="fas fa-user"></i>
             </div>
-            <h2>{{ current_user.nome }}</h2>
-            <p class="text-muted">{{ current_user.email }}</p>
+            <h2>{{ usuario.nome }}</h2>
             <p class="text-muted" style="font-size: 0.78rem; margin-top: 8px;">
-                <i class="fas fa-calendar"></i> Membro desde {{ current_user.criado_em|data_br }}
+                <i class="fas fa-calendar"></i> Membro desde {{ usuario.criado_em|data_br }}
             </p>
 
             <!-- Stats -->
@@ -60,8 +59,8 @@
             <!-- Theme toggle -->
             <div style="margin-top: 10px;">
                 <button class="btn btn-glass btn-block" id="themeToggle" onclick="toggleTheme()">
-                    <i class="fas fa-{{ 'sun' if current_user.tema == 'dark' else 'moon' }}"></i>
-                    Tema {{ 'Claro' if current_user.tema == 'dark' else 'Escuro' }}
+                    <i class="fas fa-{{ 'sun' if usuario.tema == 'dark' else 'moon' }}"></i>
+                    Tema {{ 'Claro' if usuario.tema == 'dark' else 'Escuro' }}
                 </button>
             </div>
         </div>
@@ -76,38 +75,10 @@
                 <form action="{{ url_for('editar_perfil') }}" method="POST" class="auth-form">
                     <div class="form-group">
                         <label><i class="fas fa-user"></i> Nome</label>
-                        <input type="text" name="nome" value="{{ current_user.nome }}" required>
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-envelope"></i> Email</label>
-                        <input type="email" name="email" value="{{ current_user.email }}" required>
+                        <input type="text" name="nome" value="{{ usuario.nome }}" required>
                     </div>
                     <button type="submit" class="btn btn-primary btn-block">
                         <i class="fas fa-save"></i> Salvar Alterações
-                    </button>
-                </form>
-            </div>
-
-            <!-- Change password -->
-            <div class="section-card">
-                <div class="section-card-header">
-                    <h2><i class="fas fa-lock" style="color: var(--accent-yellow)"></i> Alterar Senha</h2>
-                </div>
-                <form action="{{ url_for('alterar_senha') }}" method="POST" class="auth-form">
-                    <div class="form-group">
-                        <label><i class="fas fa-key"></i> Senha Atual</label>
-                        <input type="password" name="senha_atual" required>
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-lock"></i> Nova Senha</label>
-                        <input type="password" name="nova_senha" minlength="6" required>
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-check"></i> Confirmar Nova Senha</label>
-                        <input type="password" name="confirmar_senha" minlength="6" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block">
-                        <i class="fas fa-key"></i> Alterar Senha
                     </button>
                 </form>
             </div>
