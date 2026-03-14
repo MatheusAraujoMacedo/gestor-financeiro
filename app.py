@@ -1979,17 +1979,36 @@ def toggle_tema():
 @app.route('/investimentos')
 def investimentos():
     usuario = get_user()
-    investimentos_lista = Investimento.query.filter_by(usuario_id=usuario.id).all()
+    investimentos = Investimento.query.filter_by(usuario_id=usuario.id).all()
     
-    patrimonio_total = sum(i.valor_investido for i in investimentos_lista)
-    rendimentos_totais = sum(i.rendimentos_recebidos for i in investimentos_lista)
+    # Calcular total investido e rendimentos gerais
+    patrimonio_total = sum(i.valor_investido for i in investimentos)
+    rendimentos_totais = sum(i.rendimentos_recebidos for i in investimentos)
     
+    # Composição da carteira
     tipos = {}
-    for i in investimentos_lista:
-        if i.quantidade_atual > 0:
+    for i in investimentos:
+        if i.quantidade_atual > 0: # Apenas investimentos ativos
             tipos[i.tipo] = tipos.get(i.tipo, 0) + i.valor_investido
-            
-    return render_template('investimentos.html', investimentos=investimentos_lista, patrimonio_total=patrimonio_total, rendimentos_totais=rendimentos_totais, tipos=tipos)
+        
+    icon_map = {
+        'Ação': 'fas fa-building',
+        'FII': 'fas fa-city',
+        'Renda Fixa': 'fas fa-piggy-bank',
+        'Cripto': 'fab fa-bitcoin',
+        'Outros': 'fas fa-box'
+    }
+
+    from datetime import datetime
+    return render_template(
+        'investimentos.html',
+        investimentos=investimentos,
+        patrimonio_total=patrimonio_total,
+        rendimentos_totais=rendimentos_totais,
+        tipos=tipos,
+        icon_map=icon_map,
+        now=datetime.utcnow()
+    )
 
 @app.route('/investimentos/novo', methods=['POST'])
 def novo_investimento():
@@ -1998,12 +2017,45 @@ def novo_investimento():
     ticker = request.form.get('ticker')
     tipo = request.form.get('tipo')
     
+    quantidade_str = request.form.get('quantidade', '0')
+    valor_unitario_str = request.form.get('valor_unitario', '0')
+    data_operacao_str = request.form.get('data_operacao')
+    
     if not nome or not tipo:
         flash('Nome e Tipo são obrigatórios.', 'error')
         return redirect(url_for('investimentos'))
         
+    try:
+        quantidade = float(quantidade_str.replace(',', '.'))
+        valor_clean = valor_unitario_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
+        valor_unitario = float(valor_clean) if valor_clean else 0.0
+    except ValueError:
+        quantidade = 0.0
+        valor_unitario = 0.0
+        
     investimento = Investimento(nome=nome, ticker=ticker, tipo=tipo, usuario_id=usuario.id)
     db.session.add(investimento)
+    db.session.flush()
+    
+    if quantidade > 0 and valor_unitario > 0:
+        from datetime import datetime
+        if data_operacao_str:
+            try:
+                data_op = datetime.strptime(data_operacao_str, '%Y-%m-%d')
+            except ValueError:
+                data_op = datetime.utcnow()
+        else:
+            data_op = datetime.utcnow()
+            
+        nova_transacao = TransacaoInvestimento(
+            investimento_id=investimento.id,
+            tipo_transacao='compra',
+            data=data_op,
+            quantidade=quantidade,
+            valor_unitario=valor_unitario
+        )
+        db.session.add(nova_transacao)
+        
     db.session.commit()
     flash('Investimento adicionado com sucesso!', 'success')
     return redirect(url_for('investimentos'))
@@ -2012,7 +2064,8 @@ def novo_investimento():
 def investimento_detalhe(id):
     usuario = get_user()
     investimento = Investimento.query.filter_by(id=id, usuario_id=usuario.id).first_or_404()
-    return render_template('investimento_detalhe.html', investimento=investimento)
+    from datetime import datetime
+    return render_template('investimento_detalhe.html', investimento=investimento, now=datetime.utcnow())
 
 @app.route('/investimentos/<int:id>/transacao', methods=['POST'])
 def nova_transacao_investimento(id):
@@ -2022,8 +2075,8 @@ def nova_transacao_investimento(id):
     tipo_transacao = request.form.get('tipo_transacao')
     
     try:
-        quantidade = float(request.form.get('quantidade', 0).replace(',', '.'))
-        valor_unitario = float(request.form.get('valor_unitario', 0).replace('R$', '').replace('.', '').replace(',', '.').strip())
+        quantidade = float(request.form.get('quantidade', '0').replace(',', '.'))
+        valor_unitario = float(request.form.get('valor_unitario', '0').replace('R$', '').replace('.', '').replace(',', '.').strip())
     except ValueError:
         flash('Quantidade e Valor inválidos.', 'error')
         return redirect(url_for('investimento_detalhe', id=id))

@@ -3,10 +3,10 @@
 {% block title %}Investimentos - FinançasPro{% endblock %}
 
 {% block content %}
-<div class="dashboard-header">
+<div class="dashboard-header mb-20" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
     <div>
-        <h2><i class="fas fa-chart-line"></i> Meus Investimentos</h2>
-        <p>Acompanhe e gerencie sua carteira de ativos</p>
+        <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;"><i class="fas fa-chart-line" style="color: var(--accent-color);"></i> Meus Investimentos</h2>
+        <p style="margin: 4px 0 0 0; color: var(--text-secondary);">Acompanhe e gerencie sua carteira de ativos</p>
     </div>
     <div class="header-actions">
         <button class="btn btn-primary" onclick="openModal('modalNovoInvestimento')">
@@ -15,55 +15,54 @@
     </div>
 </div>
 
-<div class="cards-grid">
-    <div class="card summary-card" style="border-left: 4px solid var(--accent-color);">
-        <div class="summary-icon" style="background: rgba(124, 92, 252, 0.1); color: var(--accent-color);">
+<div class="stats-grid stats-grid-3">
+    <div class="stat-card">
+        <div class="stat-icon">
             <i class="fas fa-sack-dollar"></i>
         </div>
-        <div class="summary-info">
-            <h3>Patrimônio Investido</h3>
-            <p class="summary-value">{{ patrimonio_total | brl }}</p>
+        <div class="stat-info">
+            <span class="stat-label">Patrimônio Investido</span>
+            <span class="stat-value">{{ patrimonio_total | brl }}</span>
         </div>
     </div>
-    <div class="card summary-card" style="border-left: 4px solid var(--success-color);">
-        <div class="summary-icon" style="background: rgba(0, 214, 143, 0.1); color: var(--success-color);">
+    <div class="stat-card">
+        <div class="stat-icon stat-icon-green">
             <i class="fas fa-hand-holding-usd"></i>
         </div>
-        <div class="summary-info">
-            <h3>Rendimentos Recebidos</h3>
-            <p class="summary-value">{{ rendimentos_totais | brl }}</p>
+        <div class="stat-info">
+            <span class="stat-label">Rendimentos</span>
+            <span class="stat-value text-green">{{ rendimentos_totais | brl }}</span>
         </div>
     </div>
-    <div class="card summary-card" style="border-left: 4px solid #45b7d1;">
-        <div class="summary-icon" style="background: rgba(69, 183, 209, 0.1); color: #45b7d1;">
+    <div class="stat-card">
+        <div class="stat-icon" style="background: rgba(69, 183, 209, 0.15); color: #45b7d1;">
             <i class="fas fa-layer-group"></i>
         </div>
-        <div class="summary-info">
-            <h3>Total de Ativos</h3>
-            <p class="summary-value">{{ investimentos|length }}</p>
+        <div class="stat-info">
+            <span class="stat-label">Total de Ativos</span>
+            <span class="stat-value">{{ investimentos|length }}</span>
         </div>
     </div>
 </div>
 
-<!-- Gráficos ou Composição -->
-{% if tipos %}
-<div class="card mt-20" style="padding: 24px;">
-    <h3 class="mb-15"><i class="fas fa-pie-chart"></i> Composição da Carteira</h3>
-    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-        {% for tipo, valor in tipos.items() %}
-        <div class="meta-card" style="flex: 1; min-width: 150px; background: var(--bg-hover);">
-            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 5px;">{{ tipo }}</div>
-            <div style="font-size: 18px; font-weight: 600;">{{ valor | brl }}</div>
-            {% set pct = (valor / patrimonio_total * 100) if patrimonio_total > 0 else 0 %}
-            <div class="progress-bar mt-10">
-                <div class="progress-fill" style="width: {{ pct }}%; background: var(--accent-color);"></div>
+    {% if tipos %}
+    <div class="card mt-20" style="padding: 24px;">
+        <h3 class="mb-15"><i class="fas fa-pie-chart"></i> Composição</h3>
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+            {% for tipo, valor in tipos.items() %}
+            <div class="meta-card" style="flex: 1; min-width: 150px; background: var(--bg-hover); padding: 12px; border-radius: 8px;">
+                <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 5px;"><i class="{{ icon_map[tipo] if icon_map else 'fas fa-chart-line' }}"></i> {{ tipo }}</div>
+                <div style="font-size: 18px; font-weight: 600;">{{ valor | brl }}</div>
+                {% set pct = (valor / patrimonio_total * 100) if patrimonio_total > 0 else 0 %}
+                <div class="progress-bar mt-10" style="height: 8px; border-radius: 4px; background: rgba(255,255,255,0.05); overflow: hidden;">
+                    <div class="progress-fill" style="width: {{ pct }}%; height: 100%; background: var(--accent-color); border-radius: 4px;"></div>
+                </div>
+                <div style="font-size: 13px; font-weight: 500; margin-top: 8px; color: var(--text-secondary); display: flex; justify-content: flex-end;">{{ '%.1f' % pct }}%</div>
             </div>
-            <div style="font-size: 12px; mt-5; text-align: right; color: var(--text-secondary);">{{ '%.1f' % pct }}%</div>
+            {% endfor %}
         </div>
-        {% endfor %}
     </div>
-</div>
-{% endif %}
+    {% endif %}
 
 <div class="card mt-20" style="padding: 0; overflow: hidden;">
     <div style="padding: 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
@@ -80,7 +79,7 @@
                     <th>Quantidade</th>
                     <th>Preço Médio</th>
                     <th>Total Investido</th>
-                    <th>Ações</th>
+                    <th>Ações (Painel)</th>
                 </tr>
             </thead>
             <tbody>
@@ -111,6 +110,30 @@
             </tbody>
         </table>
     </div>
+
+<style>
+/* Melhorando o espaçamento da tabela */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td {
+    padding: 16px 20px;
+    text-align: left;
+}
+.table th {
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+/* Alinhamento da barra de composição */
+.composition-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.type-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+</style>
     {% else %}
     <div class="empty-state" style="padding: 40px 20px;">
         <i class="fas fa-box-open"></i>
@@ -121,39 +144,64 @@
 </div>
 
 <!-- Modal Novo Investimento -->
-<div class="modal-backdrop" id="modalNovoInvestimento">
-    <div class="modal-content">
+<div class="modal-overlay" id="modalNovoInvestimento">
+    <div class="modal">
         <div class="modal-header">
-            <h3><i class="fas fa-plus-circle"></i> Novo Investimento</h3>
-            <button class="btn-icon" onclick="closeModal('modalNovoInvestimento')"><i class="fas fa-times"></i></button>
+            <h2><i class="fas fa-plus-circle"></i> Novo Ativo</h2>
+            <button class="modal-close" onclick="closeModal('modalNovoInvestimento')"><i class="fas fa-times"></i></button>
         </div>
-        <form action="{{ url_for('novo_investimento') }}" method="POST">
+        <form action="{{ url_for('novo_investimento') }}" method="POST" class="modal-form">
             <div class="modal-body">
-                <div class="form-group">
-                    <label>Nome do Ativo / Investimento *</label>
-                    <input type="text" name="nome" class="form-control" placeholder="Ex: Tesouro Selic 2029, Fundo DI..." required>
+                <div class="form-group row">
+                    <div style="flex: 1;">
+                        <label>Tipo *</label>
+                        <select name="tipo" id="tipoAtivo" class="form-control" required onchange="atualizarOpcoesAtivo()">
+                            <option value="">Selecione...</option>
+                            <option value="Ação">Ação (B3)</option>
+                            <option value="FII">Fundo Imobiliário (FII)</option>
+                            <option value="Renda Fixa">Renda Fixa (CDB, Tesouro, LCI...)</option>
+                            <option value="Cripto">Criptomoeda</option>
+                            <option value="Outros">Outros Cadastros Livres</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Código / Ticker (Opcional)</label>
-                    <input type="text" name="ticker" class="form-control" placeholder="Ex: PETR4, MXRF11">
+                
+                <div class="form-group" id="grupoSelecaoAtivo">
+                    <label>Selecione ou Digite o Ativo *</label>
+                    <input type="text" name="ticker_nome" id="inputTickerNome" class="form-control" list="listaAtivos" placeholder="Selecione um Tipo primeiro..." autocomplete="off" disabled required>
+                    <datalist id="listaAtivos"></datalist>
                 </div>
-                <div class="form-group">
-                    <label>Tipo *</label>
-                    <select name="tipo" class="form-control" required>
-                        <option value="Ação">Ação</option>
-                        <option value="FII">Fundo Imobiliário (FII)</option>
-                        <option value="Renda Fixa">Renda Fixa</option>
-                        <option value="Cripto">Criptomoeda</option>
-                        <option value="Outros">Outros</option>
-                    </select>
+                
+                <h4 style="margin-top: 10px; margin-bottom: 5px; font-size: 14px; color: var(--accent-purple); border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">Investimento Inicial (Opcional)</h4>
+                
+                <div class="form-group row">
+                    <div style="flex: 1;">
+                        <label>Data *</label>
+                        <input type="date" name="data_operacao" class="form-control" value="{{ now.strftime('%Y-%m-%d') if now else '' }}">
+                    </div>
                 </div>
+
+                <div class="form-group row" style="display: flex; gap: 14px;">
+                    <div style="flex: 1;">
+                        <label>Quantidade *</label>
+                        <input type="number" step="0.00000001" name="quantidade" id="qtd_inicial" class="form-control" placeholder="Ex: 100">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Preço Médio (R$) *</label>
+                        <input type="number" step="0.01" placeholder="Ex: 10.50" name="valor_unitario" id="preco_inicial" class="form-control">
+                    </div>
+                </div>
+
+                <input type="hidden" name="nome" id="hiddenNome">
+                <input type="hidden" name="ticker" id="hiddenTicker">
+
                 <p class="text-secondary" style="font-size: 13px; margin-top: 10px;">
-                    <i class="fas fa-info-circle"></i> Após cadastrar o ativo, você poderá adicionar compras, vendas e rendimentos na tela de detalhes.
+                    <i class="fas fa-info-circle"></i> O ativo será criado na sua carteira. Se preencher quantidade e preço, a primeira compra será registrada automaticamente.
                 </p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" onclick="closeModal('modalNovoInvestimento')">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Salvar Investimento</button>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                    <button type="button" class="btn btn-glass" onclick="closeModal('modalNovoInvestimento')">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="prepararFormularioNovoAtivo(this)">Criar Ativo</button>
+                </div>
             </div>
         </form>
     </div>
@@ -174,4 +222,124 @@
     opacity: 0.5;
 }
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Base de ativos comum para Datalist
+const bancoAtivos = {
+    'Ação': [
+        'PETR4 - Petrobras PN', 'PETR3 - Petrobras ON', 'VALE3 - Vale ON',
+        'ITUB4 - Itaú Unibanco PN', 'BBDC4 - Bradesco PN', 'BBAS3 - Banco do Brasil ON',
+        'WEGE3 - WEG ON', 'ABEV3 - Ambev ON', 'ELET3 - Eletrobras ON', 'RENT3 - Localiza ON',
+        'SUZB3 - Suzano ON', 'RADL3 - RaiaDrogasil ON', 'B3SA3 - B3 ON', 'ITSA4 - Itaúsa PN'
+    ],
+    'FII': [
+        'MXRF11 - Maxi Renda', 'HGLG11 - CSHG Logística', 'XPML11 - XP Malls',
+        'BTLG11 - BTG Pactual Logística', 'KNRI11 - Kinea Renda', 'VISC11 - Vinci Shopping',
+        'IRDM11 - Iridium Recebíveis', 'CPTS11 - Capitânia Securities', 'XPLG11 - XP Log',
+        'HGRU11 - CSHG Renda Urbana', 'TRXF11 - TRX Real Estate', 'VILG11 - Vinci Logística'
+    ],
+    'Cripto': [
+        'BTC - Bitcoin', 'ETH - Ethereum', 'USDT - Tether', 'BNB - Binance Coin',
+        'SOL - Solana', 'USDC - USD Coin', 'XRP - Ripple', 'ADA - Cardano',
+        'AVAX - Avalanche', 'DOGE - Dogecoin', 'DOT - Polkadot', 'LINK - Chainlink'
+    ],
+    'Renda Fixa': [
+        'Tesouro Selic', 'Tesouro IPCA+', 'Tesouro Prefixado', 
+        'CDB Banco Inter', 'CDB Banco Itaú', 'LCI Caixa', 'LCA Banco do Brasil',
+        'CDB Sofisa Direto', 'CDB PagBank', 'LCI XP Investimentos'
+    ]
+};
+
+function atualizarOpcoesAtivo() {
+    const tipo = document.getElementById('tipoAtivo').value;
+    const grupo = document.getElementById('grupoSelecaoAtivo');
+    const input = document.getElementById('inputTickerNome');
+    const datalist = document.getElementById('listaAtivos');
+    
+    if (!tipo) {
+        input.setAttribute('disabled', 'disabled');
+        input.placeholder = 'Selecione um Tipo primeiro...';
+        input.value = '';
+        return;
+    }
+    
+    input.removeAttribute('disabled');
+    input.value = ''; // limpa seleção anterior
+    datalist.innerHTML = ''; // limpa opções
+    
+    // Se for 'Outros', deixa apenas texto livre
+    if (tipo === 'Outros') {
+        input.placeholder = 'Digite o nome do investimento...';
+        return;
+    }
+    
+    input.placeholder = `Selecione ou digite o ativo (${tipo})...`;
+    const opcoes = bancoAtivos[tipo] || [];
+    
+    opcoes.forEach(ativo => {
+        let option = document.createElement('option');
+        option.value = ativo;
+        datalist.appendChild(option);
+    });
+}
+
+function prepararFormularioNovoAtivo(btn) {
+    const inputCombo = document.getElementById('inputTickerNome').value.trim();
+    const tipo = document.getElementById('tipoAtivo').value;
+    
+    if (!tipo || !inputCombo) {
+        alert('Por favor, preencha o Tipo e o Ativo.');
+        return;
+    }
+    
+    let ticker = '';
+    let nome = inputCombo;
+    
+    // Tenta separar Ticker de Nome se tiver o formador "TICKER - NOME"
+    if (inputCombo.includes(' - ')) {
+        const partes = inputCombo.split(' - ');
+        ticker = partes[0].trim();
+        nome = partes[1].trim(); // Pega apenas a segunda parte pro banco ex: Petrobras PN
+    } else {
+        // Para Renda Fixa ou Digitado livre sem " - "
+        nome = inputCombo;
+        // Se parece um ticker (tudo maiúscula, até 6 letras) 
+        if (inputCombo === inputCombo.toUpperCase() && inputCombo.length <= 6 && !inputCombo.includes(' ')) {
+            ticker = inputCombo;
+        }
+    }
+    
+    document.getElementById('hiddenTicker').value = ticker;
+    document.getElementById('hiddenNome').value = ticker ? `${ticker} - ${nome}` : nome; // manter tudo no campo nome pro back ou separar (neste caso junta pra fallback na listagem)
+    
+    // Submete o formulário originário
+    
+    // Check if user filled one but not the other
+    const qtd = document.getElementById('qtd_inicial').value;
+    const preco = document.getElementById('preco_inicial').value;
+    
+    if ((qtd && !preco) || (!qtd && preco)) {
+        alert("Para lançar a transação inicial, preencha tanto a quantidade quanto o preço médio.");
+        return;
+    }
+
+    btn.closest('form').submit();
+}
+
+function formatarMoedaParaInput(input) {
+    let valor = input.value.replace(/\D/g, '');
+    if (valor === '') {
+        input.value = '';
+        return;
+    }
+    
+    valor = (parseInt(valor) / 100).toFixed(2);
+    valor = valor.replace('.', ',');
+    valor = valor.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+    
+    input.value = 'R$ ' + valor;
+}
+
+</script>
 {% endblock %}

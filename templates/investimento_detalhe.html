@@ -3,47 +3,86 @@
 {% block title %}Detalhes do Investimento - FinançasPro{% endblock %}
 
 {% block content %}
-<div class="dashboard-header mb-20">
-    <div style="display: flex; align-items: center; gap: 15px;">
-        <a href="{{ url_for('investimentos') }}" class="btn btn-outline" style="padding: 8px 12px;"><i class="fas fa-arrow-left"></i> Voltar</a>
-        <div>
-            <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;">
-                <i class="{{ investimento.icone_tipo }}" style="color: var(--accent-color);"></i>
-                {{ investimento.nome }}
-            </h2>
-            <p style="margin: 0;">{% if investimento.ticker %}{{ investimento.ticker }} &bull; {% endif %}{{ investimento.tipo }}</p>
+<div class="dashboard-header mb-20" style="align-items: flex-start; flex-direction: column; gap: 20px;">
+    <a href="{{ url_for('investimentos') }}" class="btn btn-outline btn-sm"><i class="fas fa-arrow-left"></i> Voltar à Carteira</a>
+    <div style="width: 100%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="width: 52px; height: 52px; border-radius: 12px; background: rgba(124, 92, 252, 0.1); color: var(--accent-color); display: flex; align-items: center; justify-content: center; font-size: 26px;">
+                <i class="{{ investimento.icone_tipo if investimento.icone_tipo else 'fas fa-chart-line' }}"></i>
+            </div>
+            <div>
+                <h2 style="margin: 0; font-size: 24px; font-weight: 700;">{{ investimento.nome }}</h2>
+                <p style="margin: 4px 0 0 0; color: var(--text-secondary); font-size: 14px;">{% if investimento.ticker %}{{ investimento.ticker }} &bull; {% endif %}{{ investimento.tipo }}</p>
+            </div>
         </div>
-    </div>
-    <div class="header-actions">
-        <button class="btn btn-primary" onclick="openModal('modalNovaOperacao')">
-            <i class="fas fa-plus"></i> Nova Operação / Rendimento
-        </button>
-        <button class="btn btn-outline" style="color: var(--danger-color); border-color: var(--danger-color);" onclick="openModal('modalExcluirAtivo')">
-            <i class="fas fa-trash"></i> Excluir Ativo
-        </button>
+        <div class="header-actions" style="display: flex; gap: 12px;">
+            <button class="btn btn-primary btn-sm" onclick="openModal('modalNovaOperacao')">
+                <i class="fas fa-plus"></i> Lançar Operação
+            </button>
+            <button class="btn btn-outline btn-sm text-danger border-danger" onclick="openModal('modalExcluirAtivo')">
+                <i class="fas fa-trash"></i> Excluir Ativo
+            </button>
+        </div>
     </div>
 </div>
 
+<style>
+/* Utilities para Investimento_Detalhe */
+.btn-sm { padding: 8px 16px; font-size: 13px; font-weight: 500;}
+.text-danger { color: #ff6b6b !important; }
+.border-danger { border-color: rgba(255, 107, 107, 0.3) !important; }
+.border-danger:hover { background: rgba(255, 107, 107, 0.1) !important; color: #ff6b6b !important; border-color: #ff6b6b !important;}
+
+/* Fix para formulários de modal e linhas flex */
+.form-group.row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+.form-group {
+    margin-bottom: 15px;
+}
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+/* Espaçamento em tabelas internas */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td {
+    padding: 16px 20px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+.table th {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+</style>
+
 <div class="cards-grid">
-    <div class="card summary-card">
+    <div class="card stat-card">
         <div class="summary-info">
             <p class="summary-title" style="color: var(--text-secondary); font-size: 14px;">Quantidade Atual</p>
             <h3 style="font-size: 24px; margin: 5px 0 0 0;">{{ '%.2f' % investimento.quantidade_atual if investimento.quantidade_atual % 1 != 0 else investimento.quantidade_atual|int }}</h3>
         </div>
     </div>
-    <div class="card summary-card">
+    <div class="card stat-card">
         <div class="summary-info">
             <p class="summary-title" style="color: var(--text-secondary); font-size: 14px;">Preço Médio / Custo</p>
             <h3 style="font-size: 24px; margin: 5px 0 0 0;">{{ investimento.preco_medio | brl }}</h3>
         </div>
     </div>
-    <div class="card summary-card" style="border-bottom: 3px solid var(--accent-color);">
+    <div class="card stat-card" style="border-bottom: 3px solid var(--accent-color);">
         <div class="summary-info">
             <p class="summary-title" style="color: var(--text-secondary); font-size: 14px;">Total Investido</p>
             <h3 style="font-size: 24px; margin: 5px 0 0 0;">{{ investimento.valor_investido | brl }}</h3>
         </div>
     </div>
-    <div class="card summary-card" style="border-bottom: 3px solid var(--success-color);">
+    <div class="card stat-card" style="border-bottom: 3px solid var(--success-color);">
         <div class="summary-info">
             <p class="summary-title" style="color: var(--text-secondary); font-size: 14px;">Rendimentos Recebidos</p>
             <h3 style="font-size: 24px; margin: 5px 0 0 0; color: var(--success-color);">{{ investimento.rendimentos_recebidos | brl }}</h3>
@@ -75,11 +114,11 @@
                     <td>{{ t.data.strftime('%d/%m/%Y') }}</td>
                     <td>
                         {% if t.tipo_transacao == 'compra' %}
-                        <span class="badge badge-primary"><i class="fas fa-arrow-down"></i> Compra</span>
+                        <span class="badge badge-primary"><i class="fas fa-arrow-down" style="font-size: 10px;"></i> Compra</span>
                         {% elif t.tipo_transacao == 'venda' %}
-                        <span class="badge" style="background: rgba(255, 107, 107, 0.1); color: var(--danger-color);"><i class="fas fa-arrow-up"></i> Venda</span>
+                        <span class="badge" style="background: rgba(255, 107, 107, 0.1); color: var(--danger-color);"><i class="fas fa-arrow-up" style="font-size: 10px;"></i> Venda</span>
                         {% else %}
-                        <span class="badge" style="background: rgba(0, 214, 143, 0.1); color: var(--success-color);"><i class="fas fa-money-bill-wave"></i> Dividendo</span>
+                        <span class="badge" style="background: rgba(0, 214, 143, 0.1); color: var(--success-color);"><i class="fas fa-money-bill-wave" style="font-size: 10px;"></i> Dividendo</span>
                         {% endif %}
                     </td>
                     <td>{{ '%.2f' % t.quantidade if t.quantidade % 1 != 0 else t.quantidade|int }}</td>
@@ -87,7 +126,7 @@
                     <td style="font-weight: 600;">{{ (t.quantidade * t.valor_unitario) | brl }}</td>
                     <td>
                         <form action="{{ url_for('excluir_transacao_investimento', transacao_id=t.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja excluir este lançamento?');">
-                            <button type="submit" class="btn-icon" style="color: var(--danger-color); padding: 5px;"><i class="fas fa-trash"></i></button>
+                            <button type="submit" class="btn btn-outline border-danger text-danger btn-sm" style="padding: 6px 10px;" title="Excluir Lançamento"><i class="fas fa-trash"></i></button>
                         </form>
                     </td>
                 </tr>
@@ -105,15 +144,15 @@
 </div>
 
 <!-- Modal Nova Operação -->
-<div class="modal-backdrop" id="modalNovaOperacao">
-    <div class="modal-content">
+<div class="modal-overlay" id="modalNovaOperacao">
+    <div class="modal">
         <div class="modal-header">
             <h3><i class="fas fa-exchange-alt"></i> Novo Lançamento</h3>
             <button class="btn-icon" onclick="closeModal('modalNovaOperacao')"><i class="fas fa-times"></i></button>
         </div>
         <form action="{{ url_for('nova_transacao_investimento', id=investimento.id) }}" method="POST">
             <div class="modal-body">
-                <div class="form-group row">
+                <div class="form-group" style="display: flex; gap: 15px; margin-bottom: 15px;">
                     <div style="flex: 1;">
                         <label>Tipo de Operação *</label>
                         <select name="tipo_transacao" class="form-control" id="tipoTransacaoSelect" required onchange="atualizarLabels()">
@@ -124,53 +163,57 @@
                     </div>
                     <div style="flex: 1;">
                         <label>Data *</label>
-                        <input type="date" name="data" class="form-control" value="{{ now().strftime('%Y-%m-%d') }}" required>
+                        <input type="date" name="data" class="form-control" value="{{ now.strftime('%Y-%m-%d') if now else '' }}" required>
                     </div>
                 </div>
                 
-                <div class="form-group row">
+                <div class="form-group" style="display: flex; gap: 15px; margin-bottom: 15px;">
                     <div style="flex: 1;">
                         <label id="lblQuantidade">Quantidade *</label>
                         <input type="number" step="0.0001" min="0.0001" name="quantidade" class="form-control" placeholder="0" required oninput="calcularTotal()">
                     </div>
                     <div style="flex: 1;">
-                        <label id="lblValorUnit}">Preço Unitário (R$) *</label>
-                        <input type="text" name="valor_unitario" class="form-control input-moeda" placeholder="0,00" required oninput="calcularTotal()">
+                        <label id="lblValorUnit">Preço Unitário (R$) *</label>
+                        <input type="number" step="0.01" name="valor_unitario" class="form-control" placeholder="Ex: 10.50" required oninput="calcularTotal()">
                     </div>
                 </div>
                 
                 <div class="form-group">
                     <label>Valor Total da Operação</label>
-                    <div id="valorTotalLabel" style="font-size: 24px; font-weight: bold; color: var(--accent-color);">R$ 0,00</div>
+                    <h3 id="valorTotalOperacao" style="margin: 0; font-size: 24px;">R$ 0,00</h3>
                 </div>
                 
-                <p class="text-secondary" style="font-size: 13px; margin-top: 10px;" id="dicaOperacao">
-                    <i class="fas fa-info-circle"></i> O custo médio será atualizado automaticamente ao registrar uma compra.
+                <div id="avisoDividendo" class="info-alert mt-15" style="display: none; font-size: 13px; color: var(--text-secondary); background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; margin-bottom: 20px;">
+                    <i class="fas fa-info-circle" style="margin-top:2px;"></i> <span>Dividendos não alteram sua quantidade em carteira nem o preço médio, apenas somam nos rendimentos.</span>
+                </div>
+
+                <p class="text-secondary" style="font-size: 13px; margin-top: 15px; display:flex; align-items:flex-start; gap:8px;" id="dicaOperacao">
+                    <i class="fas fa-info-circle" style="margin-top:2px;"></i> <span>O custo médio será atualizado automaticamente ao registrar uma compra.</span>
                 </p>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" onclick="closeModal('modalNovaOperacao')">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Salvar Lançamento</button>
+            <div class="modal-footer" style="padding: 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; background: rgba(0,0,0,0.1);">
+                <button type="button" class="btn btn-outline" style="padding: 10px 16px;" onclick="closeModal('modalNovaOperacao')">Cancelar</button>
+                <button type="submit" class="btn btn-primary" style="padding: 10px 16px;">Salvar Lançamento</button>
             </div>
         </form>
     </div>
 </div>
 
 <!-- Modal Excluir -->
-<div class="modal-backdrop" id="modalExcluirAtivo">
-    <div class="modal-content" style="max-width: 400px;">
+<div class="modal-overlay" id="modalExcluirAtivo">
+    <div class="modal" style="max-width: 400px;">
         <div class="modal-header">
             <h3 style="color: var(--danger-color);"><i class="fas fa-exclamation-triangle"></i> Atenção</h3>
             <button class="btn-icon" onclick="closeModal('modalExcluirAtivo')"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
             <p>Tem certeza que deseja excluir o ativo <strong>{{ investimento.nome }}</strong>? Todo o histórico de operações também será apagado. Esta ação não pode ser desfeita.</p>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-outline" onclick="closeModal('modalExcluirAtivo')">Cancelar</button>
-            <form action="{{ url_for('excluir_investimento', id=investimento.id) }}" method="POST">
-                <button type="submit" class="btn btn-primary" style="background: var(--danger-color);">Sim, Excluir</button>
-            </form>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-glass" onclick="closeModal('modalExcluirAtivo')">Cancelar</button>
+                <form action="{{ url_for('excluir_investimento', id=investimento.id) }}" method="POST" style="display: inline;">
+                    <button type="submit" class="btn" style="background: var(--accent-red); color: white;">Confirmar Exclusão</button>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -179,26 +222,26 @@
 function atualizarLabels() {
     const tipo = document.getElementById('tipoTransacaoSelect').value;
     const lblQuantidade = document.getElementById('lblQuantidade');
-    const lblValor = document.getElementById('lblValorUnit}');
+    const lblValor = document.getElementById('lblValorUnit');
     const dica = document.getElementById('dicaOperacao');
     
     if (tipo === 'dividendo') {
-        lblQuantidade.innerText = "Quantidade de Cotas (Opcional)";
+        lblQuantidade.innerText = "Qtd de Cotas (Opcional)";
         document.querySelector('input[name="quantidade"]').value = "1";
-        lblValor.innerText = "Valor Total Recebido (R$) *";
-        dica.innerHTML = '<i class="fas fa-info-circle"></i> Dividendos não alteram sua quantidade em carteira nem o preço médio, apenas somam nos rendimentos.';
+        lblValor.innerText = "Total Recebido (R$) *";
+        dica.innerHTML = '<i class="fas fa-info-circle" style="margin-top:2px;"></i> <span>Dividendos não alteram sua quantidade em carteira nem o preço médio, apenas somam nos rendimentos.</span>';
     } else if (tipo === 'venda') {
-        lblQuantidade.innerText = "Quantidade Vendida *";
-        lblValor.innerText = "Preço de Venda (por cota/unidade) *";
-        dica.innerHTML = '<i class="fas fa-info-circle"></i> A venda diminuirá a quantidade em carteira. O Preço Médio não é recalculado na venda.';
+        lblQuantidade.innerText = "Qtd Vendida *";
+        lblValor.innerText = "Preço Unitário da Venda *";
+        dica.innerHTML = '<i class="fas fa-info-circle" style="margin-top:2px;"></i> <span>A venda diminuirá a quantidade em carteira. O Preço Médio não é recalculado na venda.</span>';
         // Clear value to force user type
         if(document.querySelector('input[name="quantidade"]').value == "1") {
             document.querySelector('input[name="quantidade"]').value = "";
         }
     } else {
-        lblQuantidade.innerText = "Quantidade Comprada *";
+        lblQuantidade.innerText = "Qtd Comprada *";
         lblValor.innerText = "Preço Unitário (R$) *";
-        dica.innerHTML = '<i class="fas fa-info-circle"></i> O custo médio será atualizado automaticamente ao registrar uma nova compra.';
+        dica.innerHTML = '<i class="fas fa-info-circle" style="margin-top:2px;"></i> <span>O custo médio será atualizado automaticamente ao registrar uma nova compra.</span>';
         if(document.querySelector('input[name="quantidade"]').value == "1") {
             document.querySelector('input[name="quantidade"]').value = "";
         }
@@ -208,32 +251,13 @@ function atualizarLabels() {
 
 function calcularTotal() {
     let qtd = parseFloat(document.querySelector('input[name="quantidade"]').value) || 0;
-    
-    // Tratamento para campo máscara de moeda
-    let valStr = document.querySelector('input[name="valor_unitario"]').value;
-    valStr = valStr.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-    let val = parseFloat(valStr) || 0;
+    let val = parseFloat(document.querySelector('input[name="valor_unitario"]').value) || 0;
     
     let total = qtd * val;
     document.getElementById('valorTotalLabel').innerText = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
-
-// Configurar máscara simples (se não houver outra no app.js)
-document.addEventListener('DOMContentLoaded', () => {
-    const inputMoeda = document.querySelector('.input-moeda');
-    if(inputMoeda && typeof inputMoeda.addEventListener === 'function') {
-        inputMoeda.addEventListener('input', function(e) {
-            let valor = e.target.value.replace(/\D/g, "");
-            valor = (valor / 100).toFixed(2) + "";
-            valor = valor.replace(".", ",");
-            valor = valor.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
-            valor = valor.replace(/(\d)(\d{3}),/g, "$1.$2,");
-            e.target.value = valor;
-        });
-    }
     
     // Função helper custom if now() not available in context via basic context processor
     // we use JS validation if needed, but jinja will break if now() undefined. 
-});
 </script>
 {% endblock %}
