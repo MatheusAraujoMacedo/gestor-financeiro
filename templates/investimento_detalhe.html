@@ -1,0 +1,239 @@
+{% extends 'base.html' %}
+
+{% block title %}Detalhes do Investimento - FinançasPro{% endblock %}
+
+{% block content %}
+<div class="dashboard-header mb-20">
+    <div style="display: flex; align-items: center; gap: 15px;">
+        <a href="{{ url_for('investimentos') }}" class="btn btn-outline" style="padding: 8px 12px;"><i class="fas fa-arrow-left"></i> Voltar</a>
+        <div>
+            <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                <i class="{{ investimento.icone_tipo }}" style="color: var(--accent-color);"></i>
+                {{ investimento.nome }}
+            </h2>
+            <p style="margin: 0;">{% if investimento.ticker %}{{ investimento.ticker }} &bull; {% endif %}{{ investimento.tipo }}</p>
+        </div>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-primary" onclick="openModal('modalNovaOperacao')">
+            <i class="fas fa-plus"></i> Nova Operação / Rendimento
+        </button>
+        <button class="btn btn-outline" style="color: var(--danger-color); border-color: var(--danger-color);" onclick="openModal('modalExcluirAtivo')">
+            <i class="fas fa-trash"></i> Excluir Ativo
+        </button>
+    </div>
+</div>
+
+<div class="cards-grid">
+    <div class="card summary-card">
+        <div class="summary-info">
+            <p class="summary-title" style="color: var(--text-secondary); font-size: 14px;">Quantidade Atual</p>
+            <h3 style="font-size: 24px; margin: 5px 0 0 0;">{{ '%.2f' % investimento.quantidade_atual if investimento.quantidade_atual % 1 != 0 else investimento.quantidade_atual|int }}</h3>
+        </div>
+    </div>
+    <div class="card summary-card">
+        <div class="summary-info">
+            <p class="summary-title" style="color: var(--text-secondary); font-size: 14px;">Preço Médio / Custo</p>
+            <h3 style="font-size: 24px; margin: 5px 0 0 0;">{{ investimento.preco_medio | brl }}</h3>
+        </div>
+    </div>
+    <div class="card summary-card" style="border-bottom: 3px solid var(--accent-color);">
+        <div class="summary-info">
+            <p class="summary-title" style="color: var(--text-secondary); font-size: 14px;">Total Investido</p>
+            <h3 style="font-size: 24px; margin: 5px 0 0 0;">{{ investimento.valor_investido | brl }}</h3>
+        </div>
+    </div>
+    <div class="card summary-card" style="border-bottom: 3px solid var(--success-color);">
+        <div class="summary-info">
+            <p class="summary-title" style="color: var(--text-secondary); font-size: 14px;">Rendimentos Recebidos</p>
+            <h3 style="font-size: 24px; margin: 5px 0 0 0; color: var(--success-color);">{{ investimento.rendimentos_recebidos | brl }}</h3>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-20" style="padding: 0; overflow: hidden;">
+    <div style="padding: 20px; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0;"><i class="fas fa-history"></i> Histórico de Operações</h3>
+    </div>
+    
+    {% if investimento.transacoes %}
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Quantidade</th>
+                    <th>Valor Unitário</th>
+                    <th>Valor Total</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in investimento.transacoes %}
+                <tr>
+                    <td>{{ t.data.strftime('%d/%m/%Y') }}</td>
+                    <td>
+                        {% if t.tipo_transacao == 'compra' %}
+                        <span class="badge badge-primary"><i class="fas fa-arrow-down"></i> Compra</span>
+                        {% elif t.tipo_transacao == 'venda' %}
+                        <span class="badge" style="background: rgba(255, 107, 107, 0.1); color: var(--danger-color);"><i class="fas fa-arrow-up"></i> Venda</span>
+                        {% else %}
+                        <span class="badge" style="background: rgba(0, 214, 143, 0.1); color: var(--success-color);"><i class="fas fa-money-bill-wave"></i> Dividendo</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ '%.2f' % t.quantidade if t.quantidade % 1 != 0 else t.quantidade|int }}</td>
+                    <td>{{ t.valor_unitario | brl }}</td>
+                    <td style="font-weight: 600;">{{ (t.quantidade * t.valor_unitario) | brl }}</td>
+                    <td>
+                        <form action="{{ url_for('excluir_transacao_investimento', transacao_id=t.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja excluir este lançamento?');">
+                            <button type="submit" class="btn-icon" style="color: var(--danger-color); padding: 5px;"><i class="fas fa-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 40px 20px; text-align: center;">
+        <i class="fas fa-file-invoice-dollar" style="font-size: 40px; color: var(--text-secondary); opacity: 0.5; margin-bottom: 15px;"></i>
+        <p style="color: var(--text-secondary);">Nenhuma operação registrada ainda.</p>
+        <button class="btn btn-outline mt-10" onclick="openModal('modalNovaOperacao')">Adicionar Primeira Operação</button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal Nova Operação -->
+<div class="modal-backdrop" id="modalNovaOperacao">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-exchange-alt"></i> Novo Lançamento</h3>
+            <button class="btn-icon" onclick="closeModal('modalNovaOperacao')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('nova_transacao_investimento', id=investimento.id) }}" method="POST">
+            <div class="modal-body">
+                <div class="form-group row">
+                    <div style="flex: 1;">
+                        <label>Tipo de Operação *</label>
+                        <select name="tipo_transacao" class="form-control" id="tipoTransacaoSelect" required onchange="atualizarLabels()">
+                            <option value="compra">Compra (Aporte)</option>
+                            <option value="venda">Venda (Resgate)</option>
+                            <option value="dividendo">Dividendo / Juros Recebidos</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Data *</label>
+                        <input type="date" name="data" class="form-control" value="{{ now().strftime('%Y-%m-%d') }}" required>
+                    </div>
+                </div>
+                
+                <div class="form-group row">
+                    <div style="flex: 1;">
+                        <label id="lblQuantidade">Quantidade *</label>
+                        <input type="number" step="0.0001" min="0.0001" name="quantidade" class="form-control" placeholder="0" required oninput="calcularTotal()">
+                    </div>
+                    <div style="flex: 1;">
+                        <label id="lblValorUnit}">Preço Unitário (R$) *</label>
+                        <input type="text" name="valor_unitario" class="form-control input-moeda" placeholder="0,00" required oninput="calcularTotal()">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Valor Total da Operação</label>
+                    <div id="valorTotalLabel" style="font-size: 24px; font-weight: bold; color: var(--accent-color);">R$ 0,00</div>
+                </div>
+                
+                <p class="text-secondary" style="font-size: 13px; margin-top: 10px;" id="dicaOperacao">
+                    <i class="fas fa-info-circle"></i> O custo médio será atualizado automaticamente ao registrar uma compra.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modalNovaOperacao')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar Lançamento</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Excluir -->
+<div class="modal-backdrop" id="modalExcluirAtivo">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header">
+            <h3 style="color: var(--danger-color);"><i class="fas fa-exclamation-triangle"></i> Atenção</h3>
+            <button class="btn-icon" onclick="closeModal('modalExcluirAtivo')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <p>Tem certeza que deseja excluir o ativo <strong>{{ investimento.nome }}</strong>? Todo o histórico de operações também será apagado. Esta ação não pode ser desfeita.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('modalExcluirAtivo')">Cancelar</button>
+            <form action="{{ url_for('excluir_investimento', id=investimento.id) }}" method="POST">
+                <button type="submit" class="btn btn-primary" style="background: var(--danger-color);">Sim, Excluir</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function atualizarLabels() {
+    const tipo = document.getElementById('tipoTransacaoSelect').value;
+    const lblQuantidade = document.getElementById('lblQuantidade');
+    const lblValor = document.getElementById('lblValorUnit}');
+    const dica = document.getElementById('dicaOperacao');
+    
+    if (tipo === 'dividendo') {
+        lblQuantidade.innerText = "Quantidade de Cotas (Opcional)";
+        document.querySelector('input[name="quantidade"]').value = "1";
+        lblValor.innerText = "Valor Total Recebido (R$) *";
+        dica.innerHTML = '<i class="fas fa-info-circle"></i> Dividendos não alteram sua quantidade em carteira nem o preço médio, apenas somam nos rendimentos.';
+    } else if (tipo === 'venda') {
+        lblQuantidade.innerText = "Quantidade Vendida *";
+        lblValor.innerText = "Preço de Venda (por cota/unidade) *";
+        dica.innerHTML = '<i class="fas fa-info-circle"></i> A venda diminuirá a quantidade em carteira. O Preço Médio não é recalculado na venda.';
+        // Clear value to force user type
+        if(document.querySelector('input[name="quantidade"]').value == "1") {
+            document.querySelector('input[name="quantidade"]').value = "";
+        }
+    } else {
+        lblQuantidade.innerText = "Quantidade Comprada *";
+        lblValor.innerText = "Preço Unitário (R$) *";
+        dica.innerHTML = '<i class="fas fa-info-circle"></i> O custo médio será atualizado automaticamente ao registrar uma nova compra.';
+        if(document.querySelector('input[name="quantidade"]').value == "1") {
+            document.querySelector('input[name="quantidade"]').value = "";
+        }
+    }
+    calcularTotal();
+}
+
+function calcularTotal() {
+    let qtd = parseFloat(document.querySelector('input[name="quantidade"]').value) || 0;
+    
+    // Tratamento para campo máscara de moeda
+    let valStr = document.querySelector('input[name="valor_unitario"]').value;
+    valStr = valStr.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+    let val = parseFloat(valStr) || 0;
+    
+    let total = qtd * val;
+    document.getElementById('valorTotalLabel').innerText = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+// Configurar máscara simples (se não houver outra no app.js)
+document.addEventListener('DOMContentLoaded', () => {
+    const inputMoeda = document.querySelector('.input-moeda');
+    if(inputMoeda && typeof inputMoeda.addEventListener === 'function') {
+        inputMoeda.addEventListener('input', function(e) {
+            let valor = e.target.value.replace(/\D/g, "");
+            valor = (valor / 100).toFixed(2) + "";
+            valor = valor.replace(".", ",");
+            valor = valor.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
+            valor = valor.replace(/(\d)(\d{3}),/g, "$1.$2,");
+            e.target.value = valor;
+        });
+    }
+    
+    // Função helper custom if now() not available in context via basic context processor
+    // we use JS validation if needed, but jinja will break if now() undefined. 
+});
+</script>
+{% endblock %}

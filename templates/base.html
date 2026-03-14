@@ -74,6 +74,9 @@
                     <li><a href="{{ url_for('contas') }}"
                             class="{% if request.endpoint == 'contas' %}active{% endif %}"><i
                                 class="fas fa-wallet"></i> Contas</a></li>
+                    <li><a href="{{ url_for('investimentos') }}"
+                            class="{% if 'investimento' in request.endpoint %}active{% endif %}"><i
+                                class="fas fa-chart-line"></i> Investimentos</a></li>
                 </ul>
             </div>
             

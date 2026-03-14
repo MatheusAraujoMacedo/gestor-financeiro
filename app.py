@@ -59,6 +59,7 @@ class Usuario(db.Model):
     orcamentos = db.relationship('Orcamento', backref='dono', lazy=True, cascade='all, delete-orphan')
     metas = db.relationship('Meta', backref='dono', lazy=True, cascade='all, delete-orphan')
     cartoes = db.relationship('CartaoCredito', backref='dono', lazy=True, cascade='all, delete-orphan')
+    investimentos = db.relationship('Investimento', backref='dono', lazy=True, cascade='all, delete-orphan')
 
 
 class Conta(db.Model):
@@ -331,6 +332,63 @@ class CartaoCredito(db.Model):
         return icones.get(self.bandeira, 'fa-credit-card')
 
 
+class Investimento(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False) # Ex: Tesouro Selic 2029, FII MXRF11
+    ticker = db.Column(db.String(20), nullable=True) # Ex: MXRF11, PETR4
+    tipo = db.Column(db.String(30), nullable=False)  # Ação, FII, Renda Fixa, Cripto, Outros
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
+
+    transacoes = db.relationship('TransacaoInvestimento', backref='investimento_rel', lazy=True, cascade='all, delete-orphan', order_by='TransacaoInvestimento.data.desc()')
+
+    @property
+    def quantidade_atual(self):
+        compras = sum(t.quantidade for t in self.transacoes if t.tipo_transacao == 'compra')
+        vendas = sum(t.quantidade for t in self.transacoes if t.tipo_transacao == 'venda')
+        return compras - vendas
+
+    @property
+    def preco_medio(self):
+        # Média ponderada apenas das compras (Custo de Aquisição)
+        compras = [t for t in self.transacoes if t.tipo_transacao == 'compra']
+        if not compras:
+            return 0
+        total_gasto = sum(t.quantidade * t.valor_unitario for t in compras)
+        total_comprado = sum(t.quantidade for t in compras)
+        if total_comprado == 0:
+            return 0
+        return total_gasto / total_comprado
+
+    @property
+    def valor_investido(self):
+        return self.quantidade_atual * self.preco_medio
+
+    @property
+    def rendimentos_recebidos(self):
+        # Aqui, mantemos que dividendo pode ter quantidade = 1 e valor = total recebido, ou quantidade = numero_cotas e valor = dividendo por cota
+        return sum(t.quantidade * t.valor_unitario for t in self.transacoes if t.tipo_transacao == 'dividendo')
+
+    @property
+    def icone_tipo(self):
+        icones = {
+            'Ação': 'fa-chart-pie',
+            'FII': 'fa-building',
+            'Renda Fixa': 'fa-piggy-bank',
+            'Cripto': 'fa-bitcoin',
+            'Outros': 'fa-chart-line'
+        }
+        return icones.get(self.tipo, 'fa-chart-line')
+
+
+class TransacaoInvestimento(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    investimento_id = db.Column(db.Integer, db.ForeignKey('investimento.id'), nullable=False)
+    tipo_transacao = db.Column(db.String(20), nullable=False) # 'compra', 'venda', 'dividendo'
+    quantidade = db.Column(db.Float, nullable=False)
+    valor_unitario = db.Column(db.Float, nullable=False)
+    data = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 # Criar tabelas do banco de dados
 with app.app_context():
     db.create_all()
@@ -470,7 +528,8 @@ def invalidar_cache_automaticos(usuario_id):
 # Injetar o usuário em todos os templates
 @app.context_processor
 def inject_user():
-    return dict(usuario=get_user())
+    return dict(usuario=get_user(), now=datetime.utcnow)
+
 
 
 # =============================================
@@ -1911,6 +1970,115 @@ def toggle_tema():
     usuario.tema = 'light' if usuario.tema == 'dark' else 'dark'
     db.session.commit()
     return jsonify({'tema': usuario.tema})
+
+
+# =============================================
+# INVESTIMENTOS
+# =============================================
+
+@app.route('/investimentos')
+def investimentos():
+    usuario = get_user()
+    investimentos_lista = Investimento.query.filter_by(usuario_id=usuario.id).all()
+    
+    patrimonio_total = sum(i.valor_investido for i in investimentos_lista)
+    rendimentos_totais = sum(i.rendimentos_recebidos for i in investimentos_lista)
+    
+    tipos = {}
+    for i in investimentos_lista:
+        if i.quantidade_atual > 0:
+            tipos[i.tipo] = tipos.get(i.tipo, 0) + i.valor_investido
+            
+    return render_template('investimentos.html', investimentos=investimentos_lista, patrimonio_total=patrimonio_total, rendimentos_totais=rendimentos_totais, tipos=tipos)
+
+@app.route('/investimentos/novo', methods=['POST'])
+def novo_investimento():
+    usuario = get_user()
+    nome = request.form.get('nome')
+    ticker = request.form.get('ticker')
+    tipo = request.form.get('tipo')
+    
+    if not nome or not tipo:
+        flash('Nome e Tipo são obrigatórios.', 'error')
+        return redirect(url_for('investimentos'))
+        
+    investimento = Investimento(nome=nome, ticker=ticker, tipo=tipo, usuario_id=usuario.id)
+    db.session.add(investimento)
+    db.session.commit()
+    flash('Investimento adicionado com sucesso!', 'success')
+    return redirect(url_for('investimentos'))
+
+@app.route('/investimentos/<int:id>')
+def investimento_detalhe(id):
+    usuario = get_user()
+    investimento = Investimento.query.filter_by(id=id, usuario_id=usuario.id).first_or_404()
+    return render_template('investimento_detalhe.html', investimento=investimento)
+
+@app.route('/investimentos/<int:id>/transacao', methods=['POST'])
+def nova_transacao_investimento(id):
+    usuario = get_user()
+    investimento = Investimento.query.filter_by(id=id, usuario_id=usuario.id).first_or_404()
+    
+    tipo_transacao = request.form.get('tipo_transacao')
+    
+    try:
+        quantidade = float(request.form.get('quantidade', 0).replace(',', '.'))
+        valor_unitario = float(request.form.get('valor_unitario', 0).replace('R$', '').replace('.', '').replace(',', '.').strip())
+    except ValueError:
+        flash('Quantidade e Valor inválidos.', 'error')
+        return redirect(url_for('investimento_detalhe', id=id))
+        
+    data_str = request.form.get('data')
+    
+    try:
+        data = datetime.strptime(data_str, '%Y-%m-%d')
+    except (ValueError, TypeError):
+        data = datetime.utcnow()
+        
+    if quantidade <= 0 or valor_unitario <= 0:
+        flash('Quantidade e Valor devem ser maiores que zero.', 'error')
+        return redirect(url_for('investimento_detalhe', id=id))
+        
+    if tipo_transacao == 'venda' and quantidade > investimento.quantidade_atual:
+        flash('Quantidade de venda excede a quantidade atual.', 'error')
+        return redirect(url_for('investimento_detalhe', id=id))
+        
+    transacao = TransacaoInvestimento(
+        investimento_id=id,
+        tipo_transacao=tipo_transacao,
+        quantidade=quantidade,
+        valor_unitario=valor_unitario,
+        data=data
+    )
+    db.session.add(transacao)
+    db.session.commit()
+    
+    flash(f'Transação de {tipo_transacao} registrada com sucesso!', 'success')
+    return redirect(url_for('investimento_detalhe', id=id))
+
+@app.route('/investimentos/<int:id>/excluir', methods=['POST'])
+def excluir_investimento(id):
+    usuario = get_user()
+    investimento = Investimento.query.filter_by(id=id, usuario_id=usuario.id).first_or_404()
+    db.session.delete(investimento)
+    db.session.commit()
+    flash('Investimento excluído!', 'success')
+    return redirect(url_for('investimentos'))
+
+@app.route('/investimentos/transacao/<int:transacao_id>/excluir', methods=['POST'])
+def excluir_transacao_investimento(transacao_id):
+    usuario = get_user()
+    transacao = TransacaoInvestimento.query.get_or_404(transacao_id)
+    
+    # Verifica se a transação pertence a um investimento do usuário logado
+    if transacao.investimento_rel.usuario_id != usuario.id:
+        return 'Não autorizado', 403
+        
+    investimento_id = transacao.investimento_id
+    db.session.delete(transacao)
+    db.session.commit()
+    flash('Lançamento excluído!', 'success')
+    return redirect(url_for('investimento_detalhe', id=investimento_id))
 
 
 # =============================================

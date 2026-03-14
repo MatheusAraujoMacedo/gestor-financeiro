@@ -1,0 +1,177 @@
+{% extends 'base.html' %}
+
+{% block title %}Investimentos - FinançasPro{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <div>
+        <h2><i class="fas fa-chart-line"></i> Meus Investimentos</h2>
+        <p>Acompanhe e gerencie sua carteira de ativos</p>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-primary" onclick="openModal('modalNovoInvestimento')">
+            <i class="fas fa-plus"></i> Novo Ativo
+        </button>
+    </div>
+</div>
+
+<div class="cards-grid">
+    <div class="card summary-card" style="border-left: 4px solid var(--accent-color);">
+        <div class="summary-icon" style="background: rgba(124, 92, 252, 0.1); color: var(--accent-color);">
+            <i class="fas fa-sack-dollar"></i>
+        </div>
+        <div class="summary-info">
+            <h3>Patrimônio Investido</h3>
+            <p class="summary-value">{{ patrimonio_total | brl }}</p>
+        </div>
+    </div>
+    <div class="card summary-card" style="border-left: 4px solid var(--success-color);">
+        <div class="summary-icon" style="background: rgba(0, 214, 143, 0.1); color: var(--success-color);">
+            <i class="fas fa-hand-holding-usd"></i>
+        </div>
+        <div class="summary-info">
+            <h3>Rendimentos Recebidos</h3>
+            <p class="summary-value">{{ rendimentos_totais | brl }}</p>
+        </div>
+    </div>
+    <div class="card summary-card" style="border-left: 4px solid #45b7d1;">
+        <div class="summary-icon" style="background: rgba(69, 183, 209, 0.1); color: #45b7d1;">
+            <i class="fas fa-layer-group"></i>
+        </div>
+        <div class="summary-info">
+            <h3>Total de Ativos</h3>
+            <p class="summary-value">{{ investimentos|length }}</p>
+        </div>
+    </div>
+</div>
+
+<!-- Gráficos ou Composição -->
+{% if tipos %}
+<div class="card mt-20" style="padding: 24px;">
+    <h3 class="mb-15"><i class="fas fa-pie-chart"></i> Composição da Carteira</h3>
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        {% for tipo, valor in tipos.items() %}
+        <div class="meta-card" style="flex: 1; min-width: 150px; background: var(--bg-hover);">
+            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 5px;">{{ tipo }}</div>
+            <div style="font-size: 18px; font-weight: 600;">{{ valor | brl }}</div>
+            {% set pct = (valor / patrimonio_total * 100) if patrimonio_total > 0 else 0 %}
+            <div class="progress-bar mt-10">
+                <div class="progress-fill" style="width: {{ pct }}%; background: var(--accent-color);"></div>
+            </div>
+            <div style="font-size: 12px; mt-5; text-align: right; color: var(--text-secondary);">{{ '%.1f' % pct }}%</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card mt-20" style="padding: 0; overflow: hidden;">
+    <div style="padding: 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0;"><i class="fas fa-list"></i> Lista de Ativos</h3>
+    </div>
+    
+    {% if investimentos %}
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Ativo</th>
+                    <th>Tipo</th>
+                    <th>Quantidade</th>
+                    <th>Preço Médio</th>
+                    <th>Total Investido</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inv in investimentos %}
+                <tr>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(124, 92, 252, 0.1); color: var(--accent-color); display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                                <i class="{{ inv.icone_tipo }}"></i>
+                            </div>
+                            <div>
+                                <div style="font-weight: 600;">{{ inv.nome }}</div>
+                                {% if inv.ticker %}
+                                <div style="font-size: 12px; color: var(--text-secondary);">{{ inv.ticker }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td><span class="badge badge-primary">{{ inv.tipo }}</span></td>
+                    <td style="font-weight: 500;">{{ '%.2f' % inv.quantidade_atual if inv.quantidade_atual % 1 != 0 else inv.quantidade_atual|int }}</td>
+                    <td style="color: var(--text-secondary);">{{ inv.preco_medio | brl }}</td>
+                    <td style="font-weight: 600;">{{ inv.valor_investido | brl }}</td>
+                    <td>
+                        <a href="{{ url_for('investimento_detalhe', id=inv.id) }}" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px;">Detalhes</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 40px 20px;">
+        <i class="fas fa-box-open"></i>
+        <p>Você ainda não cadastrou nenhum investimento.</p>
+        <button class="btn btn-primary mt-15" onclick="openModal('modalNovoInvestimento')">Cadastrar Primeiro Ativo</button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal Novo Investimento -->
+<div class="modal-backdrop" id="modalNovoInvestimento">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-plus-circle"></i> Novo Investimento</h3>
+            <button class="btn-icon" onclick="closeModal('modalNovoInvestimento')"><i class="fas fa-times"></i></button>
+        </div>
+        <form action="{{ url_for('novo_investimento') }}" method="POST">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Nome do Ativo / Investimento *</label>
+                    <input type="text" name="nome" class="form-control" placeholder="Ex: Tesouro Selic 2029, Fundo DI..." required>
+                </div>
+                <div class="form-group">
+                    <label>Código / Ticker (Opcional)</label>
+                    <input type="text" name="ticker" class="form-control" placeholder="Ex: PETR4, MXRF11">
+                </div>
+                <div class="form-group">
+                    <label>Tipo *</label>
+                    <select name="tipo" class="form-control" required>
+                        <option value="Ação">Ação</option>
+                        <option value="FII">Fundo Imobiliário (FII)</option>
+                        <option value="Renda Fixa">Renda Fixa</option>
+                        <option value="Cripto">Criptomoeda</option>
+                        <option value="Outros">Outros</option>
+                    </select>
+                </div>
+                <p class="text-secondary" style="font-size: 13px; margin-top: 10px;">
+                    <i class="fas fa-info-circle"></i> Após cadastrar o ativo, você poderá adicionar compras, vendas e rendimentos na tela de detalhes.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modalNovoInvestimento')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar Investimento</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.metadata {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.empty-state {
+    text-align: center;
+    color: var(--text-secondary);
+}
+.empty-state i {
+    font-size: 48px;
+    margin-bottom: 15px;
+    opacity: 0.5;
+}
+</style>
+{% endblock %}
