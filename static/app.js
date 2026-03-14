@@ -139,3 +139,151 @@ document.addEventListener('keydown', (e) => {
             break;
     }
 });
+
+// ==========================================
+// CHATBOT (Assistente Virtual)
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    const chatbotToggleBtn = document.getElementById('chatbotToggleBtn');
+    const chatbotWindow = document.getElementById('chatbotWindow');
+    const chatbotClose = document.getElementById('chatbotClose');
+    const chatbotMessages = document.getElementById('chatbotMessages');
+    const chatbotInputArea = document.getElementById('chatbotInputArea');
+    const chatbotSendBtn = document.getElementById('chatbotSendBtn');
+    
+    let hasLoadedNotifications = false;
+
+    if (!chatbotToggleBtn) return;
+
+    // Abrir/Fechar
+    chatbotToggleBtn.addEventListener('click', () => {
+        chatbotWindow.classList.toggle('active');
+        if (chatbotWindow.classList.contains('active')) {
+            chatbotInputArea.focus();
+            if (!hasLoadedNotifications) {
+                checkNotifications();
+            }
+        }
+    });
+
+    chatbotClose.addEventListener('click', () => {
+        chatbotWindow.classList.remove('active');
+    });
+
+    // Histórico de conversa em memória (sessão do navegador)
+    window.chatHistory = window.chatHistory || [];
+
+    // Função de adicionar mensagem na tela
+    function addMessage(text, sender, isError = false) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `chatbot-msg ${sender} ${isError ? 'error' : ''}`;
+        
+        // Vamos renderizar markdown simples (bold) vindo do Gemini
+        let formatText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+        msgDiv.innerHTML = formatText;
+        
+        chatbotMessages.appendChild(msgDiv);
+        
+        // Scroll para baixo
+        chatbotMessages.scrollTo({
+            top: chatbotMessages.scrollHeight,
+            behavior: 'smooth'
+        });
+        
+        // Alimentar Mémoria Local se não for erro (para enviar na próxima call pro Gemini)
+        if (!isError) {
+            chatHistory.push({
+                "role": sender === 'user' ? 'user' : 'model',
+                "text": text
+            });
+            // Manter apenas as últimas 20 mensagens em contexto pra não bugar a API
+            if (chatHistory.length > 20) chatHistory.shift();
+        }
+    }
+
+    // Buscar Vencimentos Próximos
+    async function checkNotifications() {
+        hasLoadedNotifications = true;
+        try {
+            const res = await fetch('/api/bot/notificacoes');
+            const data = await res.json();
+            
+            if (data.alertas && data.resposta) {
+                setTimeout(() => {
+                    addMessage(data.resposta, 'bot');
+                }, 800);
+            } else {
+                // Mensagem de boas vindas inteligente
+                setTimeout(() => {
+                    addMessage("Olá! Sou a **Inteligência Artificial** do Gestor Pro. Como posso te ajudar hoje?", 'bot');
+                }, 800);
+            }
+        } catch (e) {
+            console.error("Erro ao carregar notificações do bot:", e);
+        }
+    }
+
+    // Enviar mensagem pro servidor
+    async function sendMessage() {
+        const text = chatbotInputArea.value.trim();
+        if (!text) return;
+        
+        // UI e Bloqueio de Input
+        chatbotInputArea.disabled = true;
+        chatbotInputArea.value = '';
+        addMessage(text, 'user');
+        
+        const typingId = 'typing-' + Date.now();
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'chatbot-msg bot';
+        typingDiv.id = typingId;
+        typingDiv.innerHTML = '<i class="fas fa-brain fa-fade"></i> <small style="opacity:0.7">Pensando...</small>';
+        chatbotMessages.appendChild(typingDiv);
+        chatbotMessages.scrollTo({ top: chatbotMessages.scrollHeight, behavior: 'smooth' });
+
+        try {
+            // Mandando a frase atual e a memória da conversa!
+            const res = await fetch('/api/bot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    mensagem: text,
+                    history: window.chatHistory.slice(0, -1) // Manda tudo, menos a que o usuario acabou de mandar q ja foi empurrada no addMessage
+                })
+            });
+            const data = await res.json();
+            
+            document.getElementById(typingId)?.remove();
+            chatbotInputArea.disabled = false;
+            chatbotInputArea.focus();
+            
+            if (data.status === 'success') {
+                addMessage(data.resposta, 'bot');
+            } else if (data.status === 'function_call') {
+                 // Tratar calls diretos, mas nossa API Backend já executa a Tool lá e devolve a Resposta pronta!
+                 // A API manda "success" e is_function_result
+                 addMessage(data.resposta, 'bot');
+            } else {
+                addMessage(data.resposta || 'Erro desconhecido', 'bot', true);
+            }
+            
+            // Relar o dashboard de fundo se o backend disser que efetuou uma Função que muda Banco de Dados
+            if (data.is_function_result) {
+                if (window.location.pathname === '/dashboard') {
+                    setTimeout(() => window.location.reload(), 2500);
+                }
+            }
+            
+        } catch (e) {
+            document.getElementById(typingId)?.remove();
+            chatbotInputArea.disabled = false;
+            addMessage("❌ Erro de conexão com a IA.", 'bot', true);
+            console.error("Erro no bot AI:", e);
+        }
+    }
+
+    chatbotSendBtn.addEventListener('click', sendMessage);
+    chatbotInputArea.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !chatbotInputArea.disabled) sendMessage();
+    });
+});

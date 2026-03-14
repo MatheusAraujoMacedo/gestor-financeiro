@@ -14,6 +14,7 @@ Esse projeto nasceu com a ideia de transformar o "vou me organizar" em algo prá
 
 ## ✅ Principais funcionalidades
 
+- **Assistente Pro (IA via Google Gemini):** Converse naturalmente, cadastre gastos e consulte saldos direto pelo chat.
 - **Dashboard** com visão geral das finanças (saldo, receitas, despesas)
 - **Transações** (receitas e despesas) com descrição, data, categoria e conta
 - **Contas** (carteira, conta corrente, poupança, investimento etc.)
@@ -35,6 +36,7 @@ Esse projeto nasceu com a ideia de transformar o "vou me organizar" em algo prá
 ## 🧱 Tecnologias
 
 - **Python 3 + Flask**
+- **Google Generative AI (Gemini API)** (Cérebro do assistente)
 - **Flask-SQLAlchemy** (ORM)
 - **SQLite** (banco de dados local)
 - **HTML / CSS / JavaScript** (templates e front)
@@ -85,7 +87,14 @@ Esse projeto nasceu com a ideia de transformar o "vou me organizar" em algo prá
    pip install -r requirements.txt
    ```
 
-4. **Execute a aplicação:**
+4. **Configuração das Variáveis de Ambiente:**
+   Renomeie ou crie um arquivo `.env` na raiz do projeto com a seguinte variável obrigatória:
+   ```env
+   GEMINI_API_KEY=sua_chave_do_google_aqui
+   ```
+   *(Você pode pegar uma chave gratuita no [Google AI Studio](https://aistudio.google.com/app/apikey))*
+
+5. **Execute a aplicação:**
    ```bash
    python app.py
    ```

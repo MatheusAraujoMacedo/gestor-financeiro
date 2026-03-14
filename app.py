@@ -10,6 +10,7 @@ import os
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+import re
 
 app = Flask(__name__)
 
@@ -592,7 +593,6 @@ def processar_automaticos(usuario):
     if lancou > 0 or orc_atual == 0:
         db.session.commit()
 
-
 @app.before_request
 def auto_processar():
     """Roda automações em cada request (com cache diário)."""
@@ -782,6 +782,135 @@ def detectar_gastos_incomuns(usuario):
             })
 
     return alertas[:5]
+
+
+# =============================================
+# API DO ASSISTENTE VIRTUAL LOCAL
+# =============================================
+
+@app.route('/api/bot', methods=['POST'])
+def api_bot():
+    dados = request.get_json()
+    if not dados:
+        return jsonify({"erro": "Corpo da requisição inválido", "status": "error"}), 400
+        
+    mensagem = dados.get('mensagem', '').strip()
+    history = dados.get('history', []) # Receberemos o histórico em JSON do Front
+    
+    usuario = get_user()
+    
+    # Montando o contexto pro Gemini saber de quem ele está cuidando
+    # (Contas disponíveis e Categorias pra ele usar no Function Calling)
+    contas = Conta.query.filter_by(usuario_id=usuario.id).all()
+    lista_contas = [{"id": c.id, "nome": c.nome} for c in contas]
+    
+    categorias = Categoria.query.filter_by(usuario_id=usuario.id).all()
+    lista_cat_desp = [{"id": c.id, "nome": c.nome} for c in categorias if c.tipo == 'despesa']
+    lista_cat_rec = [{"id": c.id, "nome": c.nome} for c in categorias if c.tipo == 'receita']
+    
+    # Saldo
+    saldo_total = sum(c.saldo_atual for c in contas)
+    
+    contexto = {
+        "saldo_total": saldo_total,
+        "contas": lista_contas,
+        "categorias_despesa": lista_cat_desp,
+        "categorias_receita": lista_cat_rec
+    }
+    
+    # Chamada pro Cérebro LLM (nosso gemini_bot.py)
+    try:
+        from gemini_bot import call_gemini_bot
+        
+        # O histórico também é modificado com o Append In-Memory, e o JS manda pra cá.
+        # Nós processamos
+        resposta_ia = call_gemini_bot(mensagem, history, contexto)
+        
+        # O modelo decidiu acionar alguma função na nossa base de dados? 
+        # (Ex: "Adicionar cerveja", aí ele processou a "registrer_transacao_tool")
+        if resposta_ia.get("status") == "function_call":
+            funcao = resposta_ia["function_name"]
+            args = resposta_ia["function_args"]
+            
+            if funcao == "registrar_transacao_tool":
+                # Executa a ação
+                conta_idx = args.get("conta_id")
+                cat_idx = args.get("categoria_id")
+                nova_t = Transacao(
+                    tipo=args.get("tipo", "despesa"),
+                    valor=args.get("valor", 0.0),
+                    descricao=args.get("descricao", "Transação IA").capitalize(),
+                    data=datetime.now(), # Futuramente podemos pegar da AI `args.get("data_iso")`
+                    usuario_id=usuario.id,
+                    conta_id=conta_idx,
+                    categoria_id=cat_idx
+                )
+                db.session.add(nova_t)
+                db.session.commit()
+                
+                # Resposta Humana Confirmando o Sucesso
+                conta_alvo = next((c for c in contas if c.id == conta_idx), None)
+                cat_alvo = next((c for c in categorias if c.id == cat_idx), None)
+                
+                frase = f"✅ **Anotado!**<br>_{args.get('descricao')} ({args.get('tipo', '')})_<br>Valor: R$ {args.get('valor', 0):.2f}<br>Conta: {conta_alvo.nome if conta_alvo else 'Padrão'}<br>Categoria: {cat_alvo.nome if cat_alvo else 'Geral'}"
+                
+                return jsonify({
+                    "status": "success", 
+                    "resposta": frase,
+                    "is_function_result": True
+                })
+                
+            elif funcao == "consultar_saldo_tool":
+                alvo = args.get("conta_id")
+                if alvo:
+                    conta_alvo = next((c for c in contas if c.id == alvo), None)
+                    frase = f"O saldo atual na **{conta_alvo.nome}** é de R$ {conta_alvo.saldo_atual:.2f}." if conta_alvo else "Não encontrei essa conta."
+                else:
+                    frase = f"O seu saldo total em todas as contas é de **R$ {saldo_total:.2f}**."
+                
+                return jsonify({
+                    "status": "success", 
+                    "resposta": frase,
+                    "is_function_result": True
+                })
+
+        # Se não foi function call, é só papo normal
+        return jsonify(resposta_ia)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "resposta": f"Ops, erro no cérebro: {str(e)}"})
+
+@app.route('/api/bot/notificacoes', methods=['GET'])
+def api_bot_notificacoes():
+    """Retorna alertas de faturas ou contas vencendo nos próximos 3 dias, simulando as mensagens ativas do Twilio."""
+    usuario = get_user()
+    hoje = date.today()
+    mensagens_alerta = []
+    
+    # Faturas de Cartão
+    cartoes = CartaoCredito.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+    for c in cartoes:
+        if c.fatura_atual > 0:
+            delta = c.dia_vencimento - hoje.day
+            if 0 <= delta <= 3:
+                mensagens_alerta.append(f"💳 Fatura **{c.nome}** (R$ {c.fatura_atual:.2f}) vence dia {c.dia_vencimento}")
+    
+    # Transacoes Fixas
+    fixas = TransacaoFixa.query.filter_by(usuario_id=usuario.id, ativo=True).all()
+    for fixa in fixas:
+        if not fixa.pago_no_mes(hoje.year, hoje.month):
+            delta = fixa.dia_vencimento - hoje.day
+            if 0 <= delta <= 3:
+                mensagens_alerta.append(f"📄 Conta **{fixa.nome}** (R$ {fixa.valor:.2f}) vence dia {fixa.dia_vencimento}")
+                
+    if mensagens_alerta:
+        resposta = "⚠️ **Lembretes de Vencimento:**<br><br>" + "<br>".join(mensagens_alerta)
+        return jsonify({"status": "success", "alertas": True, "resposta": resposta})
+        
+    return jsonify({"status": "success", "alertas": False, "resposta": ""})
+
 
 
 # =============================================
