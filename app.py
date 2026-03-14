@@ -1957,6 +1957,59 @@ def exportar_csv():
     return response
 
 
+@app.route('/exportar/powerbi')
+def exportar_powerbi():
+    usuario = get_user()
+    
+    # Busca todas as transações, sem filtro de mês/ano para o Power BI ter o histórico completo
+    transacoes = Transacao.query.filter_by(usuario_id=usuario.id).order_by(Transacao.data.asc()).all()
+
+    output = io.StringIO()
+    # Usando ponto e vírgula como delimitador (padrão PT-BR no Excel/Power BI)
+    writer = csv.writer(output, delimiter=';')
+    
+    # Cabeçalho rico para BI
+    writer.writerow([
+        'ID_Transacao', 'Data', 'Ano', 'Mes', 'Dia', 'Tipo', 
+        'Valor', 'Categoria', 'Conta', 'Descricao', 'Tags'
+    ])
+
+    for t in transacoes:
+        # Extrair dados para colunas separadas facilita a criação de dimensões de tempo no Power BI
+        ano = t.data.year if t.data else ''
+        mes = t.data.month if t.data else ''
+        dia = t.data.day if t.data else ''
+        data_formatada = t.data.strftime('%Y-%m-%d') if t.data else '' # Formato ISO é melhor para BI
+        
+        # Tags agrupadas
+        tags = ', '.join([tag.nome for tag in t.tags]) if t.tags else ''
+        
+        # Valor com ponto como separador decimal para evitar confusão com delimitador CSV (;) em alguns locales
+        # Power BI lê 1500.50 perfeitamente configurado como inglês na coluna, ou pode ser tratado facilmente.
+        # Vamos manter formato pt-BR (vírgula decimal num arquivo de delimitador ponto e vírgula)
+        valor_str = f'{t.valor:.2f}'.replace('.', ',')
+
+        writer.writerow([
+            t.id,
+            data_formatada,
+            ano,
+            mes,
+            dia,
+            t.tipo.capitalize(),
+            valor_str,
+            t.categoria_nome,
+            t.conta_nome,
+            t.descricao or '',
+            tags
+        ])
+
+    # utf-8-sig adiciona o BOM, vital para o Excel e Power BI no Windows reconhecerem acentos corretamente
+    response = make_response(output.getvalue().encode('utf-8-sig'))
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8-sig'
+    response.headers['Content-Disposition'] = 'attachment; filename=dados_powerbi.csv'
+    return response
+
+
 # =============================================
 # UPLOAD DE COMPROVANTES
 # =============================================

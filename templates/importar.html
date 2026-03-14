@@ -13,30 +13,30 @@
     <div class="import-container">
         <form action="{{ url_for('importar') }}" method="POST" enctype="multipart/form-data" class="import-form">
             <!-- Drop Zone -->
-            <div class="drop-zone" id="dropZone">
+            <div class="drop-zone" id="dropZone" style="padding: 2.5rem 2rem; min-height: 180px;">
                 <div class="drop-zone-content">
-                    <i class="fas fa-cloud-upload-alt drop-icon"></i>
-                    <h3>Arraste seu arquivo CSV aqui</h3>
-                    <p>ou clique para selecionar</p>
+                    <i class="fas fa-cloud-upload-alt drop-icon" style="font-size: 3rem; margin-bottom: 0.5rem;"></i>
+                    <h3 style="font-size: 1.2rem; margin-bottom: 0.3rem;">Arraste seu arquivo CSV aqui</h3>
+                    <p style="font-size: 0.9rem;">ou clique para selecionar</p>
                     <input type="file" name="arquivo" id="fileInput" accept=".csv" required>
                     <span class="file-name" id="fileName"></span>
                 </div>
             </div>
 
-            <div class="import-options">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label><i class="fas fa-tag"></i> Categoria padrão (opcional)</label>
-                        <select name="categoria_id">
+            <div class="import-options" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                <div class="form-row" style="display: flex; gap: 1rem;">
+                    <div class="form-group" style="flex: 1;">
+                        <label><i class="fas fa-tag"></i> Categoria padrão</label>
+                        <select name="categoria_id" class="form-control">
                             <option value="">Manter do CSV</option>
                             {% for cat in categorias %}
                             <option value="{{ cat.id }}">{{ cat.nome }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-wallet"></i> Conta destino (opcional)</label>
-                        <select name="conta_id">
+                    <div class="form-group" style="flex: 1;">
+                        <label><i class="fas fa-wallet"></i> Conta destino</label>
+                        <select name="conta_id" class="form-control">
                             <option value="">Nenhuma</option>
                             {% for c in contas %}
                             <option value="{{ c.id }}">{{ c.nome }}</option>
@@ -45,7 +45,7 @@
                     </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-block btn-lg">
+                <button type="submit" class="btn btn-primary btn-block btn-lg" style="margin-top: 0.5rem;">
                     <i class="fas fa-upload"></i> Importar Transações
                 </button>
             </div>
