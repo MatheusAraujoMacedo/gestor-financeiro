@@ -1,3 +1,11 @@
+# =============================================
+# Render.com Deploy Config
+# =============================================
+# IMPORTANTE: As variáveis de ambiente sensíveis
+# devem ser configuradas diretamente no Dashboard
+# do Render, NUNCA neste arquivo.
+# =============================================
+
 databases:
   - name: gestor-db
     plan: free
@@ -19,10 +27,13 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: CLOUDINARY_API_KEY
-        value: 439547935185919
-      - key: CLOUDINARY_API_SECRET
-        value: 3lPycV2JNER-wcV96W1l1sC4vmg
-      - key: CLOUDINARY_CLOUD_NAME
-        value: dxm88sfsc
+        value: "3.11.0"
+      # ⚠️ Configure as seguintes variáveis no Dashboard do Render:
+      # - CLOUDINARY_CLOUD_NAME
+      # - CLOUDINARY_API_KEY
+      # - CLOUDINARY_API_SECRET
+      # - GEMINI_API_KEY
+      # - TWILIO_ACCOUNT_SID
+      # - TWILIO_AUTH_TOKEN
+      # - TWILIO_WHATSAPP_NUMBER
+      # - USER_WHATSAPP_NUMBER

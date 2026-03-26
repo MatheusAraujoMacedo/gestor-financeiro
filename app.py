@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
+from dotenv import load_dotenv
 from datetime import datetime, date, timedelta
 import calendar as cal_module
 import json
@@ -7,6 +8,10 @@ import csv
 import io
 import uuid
 import os
+
+# Carregar variáveis de ambiente do .env
+load_dotenv()
+
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
@@ -15,16 +20,23 @@ import re
 app = Flask(__name__)
 
 # Configurações locais
-app.config['SECRET_KEY'] = 'gestor-financeiro-local-key-2026'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 
 # Configuração do Cloudinary
 cloudinary.config(
-  cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', ''),
-  api_key = os.environ.get('CLOUDINARY_API_KEY', '439547935185919'),
-  api_secret = os.environ.get('CLOUDINARY_API_SECRET', '3lPycV2JNER-wcV96W1l1sC4vmg')
+  cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME'),
+  api_key = os.environ.get('CLOUDINARY_API_KEY'),
+  api_secret = os.environ.get('CLOUDINARY_API_SECRET')
 )
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///gestor.db'
+# Configuração do Banco de Dados
+# Em produção (Render), usa DATABASE_URL (PostgreSQL)
+# Localmente, usa SQLite
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///gestor.db')
+# Render usa 'postgres://' mas SQLAlchemy 2.x exige 'postgresql://'
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
