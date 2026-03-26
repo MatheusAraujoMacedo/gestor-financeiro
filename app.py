@@ -1,5 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail, Message as MailMessage
 from dotenv import load_dotenv
 from datetime import datetime, date, timedelta
 import calendar as cal_module
@@ -7,6 +10,7 @@ import json
 import csv
 import io
 import uuid
+import secrets
 import os
 
 # Carregar variáveis de ambiente do .env
@@ -21,6 +25,14 @@ app = Flask(__name__)
 
 # Configurações locais
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
+
+# Configuração do Flask-Mail (Gmail SMTP)
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_APP_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = ('FinançasPro', os.environ.get('MAIL_USERNAME'))
 
 # Configuração do Cloudinary
 cloudinary.config(
@@ -44,6 +56,18 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'webp'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
+mail = Mail(app)
+
+# Flask-Login
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Faça login para acessar o sistema.'
+login_manager.login_message_category = 'info'
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return Usuario.query.get(int(user_id))
 
 
 # =============================================
@@ -57,11 +81,20 @@ transacao_tags = db.Table('transacao_tags',
 )
 
 
-class Usuario(db.Model):
+class Usuario(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
-    tema = db.Column(db.String(10), default='dark')  # 'dark' ou 'light'
+    tema = db.Column(db.String(10), default='dark')
+    email = db.Column(db.String(150), unique=True, nullable=False)
+    senha_hash = db.Column(db.String(256), nullable=False)
+    email_verificado = db.Column(db.Boolean, default=False)
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, senha):
+        self.senha_hash = generate_password_hash(senha)
+
+    def check_password(self, senha):
+        return check_password_hash(self.senha_hash, senha)
 
     # Relacionamentos
     transacoes = db.relationship('Transacao', backref='dono', lazy=True, cascade='all, delete-orphan')
@@ -402,29 +435,111 @@ class TransacaoInvestimento(db.Model):
     data = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class CodigoVerificacao(db.Model):
+    """Armazena códigos de verificação temporários para registro e reset de senha."""
+    __tablename__ = 'codigo_verificacao'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(150), nullable=False, index=True)
+    codigo = db.Column(db.String(6), nullable=False)
+    tipo = db.Column(db.String(20), nullable=False)  # 'registro', 'reset'
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    tentativas = db.Column(db.Integer, default=0)  # anti-brute-force
+
+    @property
+    def expirado(self):
+        """Código expira em 10 minutos."""
+        return (datetime.utcnow() - self.criado_em).total_seconds() > 600
+
+
 # Criar tabelas do banco de dados
 with app.app_context():
     db.create_all()
 
 
 # =============================================
+# HELPERS: EMAIL DE VERIFICAÇÃO
+# =============================================
+
+def gerar_e_enviar_codigo(email, tipo='registro'):
+    """Gera um código de 6 dígitos, salva no BD e envia por email."""
+    # Limpar códigos anteriores deste email/tipo
+    CodigoVerificacao.query.filter_by(email=email, tipo=tipo).delete()
+    db.session.commit()
+
+    codigo = f"{secrets.randbelow(900000) + 100000}"  # 100000-999999
+    novo = CodigoVerificacao(email=email, codigo=codigo, tipo=tipo)
+    db.session.add(novo)
+    db.session.commit()
+
+    # Template HTML premium do email
+    assunto = '🔐 Código de Verificação — FinançasPro' if tipo == 'registro' else '🔄 Recuperação de Senha — FinançasPro'
+    titulo = 'Confirme seu cadastro' if tipo == 'registro' else 'Redefina sua senha'
+    subtitulo = 'Use o código abaixo para verificar seu email:' if tipo == 'registro' else 'Use o código abaixo para redefinir sua senha:'
+
+    html_body = f"""
+    <div style="font-family: 'Inter', Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #0a0a1a; border-radius: 16px; overflow: hidden; border: 1px solid rgba(124,92,252,0.3);">
+        <div style="padding: 32px 28px; text-align: center;">
+            <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(124,92,252,0.2); margin: 0 auto 18px; display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 28px;">💰</span>
+            </div>
+            <h1 style="color: #e8e8f0; font-size: 1.4rem; margin: 0 0 8px;">{titulo}</h1>
+            <p style="color: #a0a3bd; font-size: 0.95rem; margin: 0 0 28px;">{subtitulo}</p>
+            <div style="background: rgba(124,92,252,0.12); border: 1px solid rgba(124,92,252,0.3); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+                <span style="font-size: 2.4rem; font-weight: 800; letter-spacing: 8px; color: #7c5cfc;">{codigo}</span>
+            </div>
+            <p style="color: #6b6e8a; font-size: 0.82rem; margin: 0;">Este código expira em <strong style="color: #ff4757;">10 minutos</strong>.</p>
+            <p style="color: #6b6e8a; font-size: 0.82rem; margin: 8px 0 0;">Se você não solicitou isso, ignore este email.</p>
+        </div>
+        <div style="background: rgba(0,0,0,0.3); padding: 16px; text-align: center; border-top: 1px solid rgba(255,255,255,0.06);">
+            <p style="color: #6b6e8a; font-size: 0.75rem; margin: 0;">&copy; 2026 FinançasPro. Todos os direitos reservados.</p>
+        </div>
+    </div>
+    """
+
+    try:
+        msg = MailMessage(subject=assunto, recipients=[email])
+        msg.html = html_body
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"[EMAIL ERROR] {e}")
+        return False
+
+
+def validar_codigo(email, codigo_digitado, tipo='registro'):
+    """Valida o código digitado. Retorna (sucesso, mensagem_erro)."""
+    registro = CodigoVerificacao.query.filter_by(email=email, tipo=tipo).first()
+
+    if not registro:
+        return False, 'Nenhum código encontrado. Solicite um novo.'
+
+    if registro.expirado:
+        db.session.delete(registro)
+        db.session.commit()
+        return False, 'Código expirado. Solicite um novo.'
+
+    if registro.tentativas >= 5:
+        db.session.delete(registro)
+        db.session.commit()
+        return False, 'Muitas tentativas. Solicite um novo código.'
+
+    if registro.codigo != codigo_digitado:
+        registro.tentativas += 1
+        db.session.commit()
+        restantes = 5 - registro.tentativas
+        return False, f'Código incorreto. {restantes} tentativa(s) restante(s).'
+
+    # Sucesso — limpar
+    db.session.delete(registro)
+    db.session.commit()
+    return True, ''
+
+
+# =============================================
 # HELPER: USUÁRIO ÚNICO LOCAL
 # =============================================
 
-def get_user():
-    """Retorna o usuário único local, criando-o automaticamente se não existir."""
-    usuario = Usuario.query.first()
-    if not usuario:
-        usuario = Usuario(nome='Usuário')
-        db.session.add(usuario)
-        db.session.flush()
 
-        # Criar categorias padrão
-        criar_categorias_padrao(usuario.id)
-        criar_conta_padrao(usuario.id)
-
-        db.session.commit()
-    return usuario
 
 
 def criar_categorias_padrao(usuario_id):
@@ -474,9 +589,11 @@ def processar_automaticos():
     if request.path.startswith('/static/'):
         return
 
-    usuario = get_user()
-    if not usuario:
+    # Só processa para usuários autenticados
+    if not current_user.is_authenticated:
         return
+
+    usuario = current_user
 
     hoje = date.today()
     chave_cache = f"{usuario.id}_{hoje.isoformat()}"
@@ -541,81 +658,10 @@ def invalidar_cache_automaticos(usuario_id):
 # Injetar o usuário em todos os templates
 @app.context_processor
 def inject_user():
-    return dict(usuario=get_user(), now=datetime.utcnow)
+    return dict(usuario=current_user, now=datetime.utcnow)
 
 
 
-# =============================================
-# AUTOMAÇÕES (roda a cada request)
-# =============================================
-
-_automaticos_cache = {}  # {data_str: True} — evita rodar múltiplas vezes no mesmo dia
-
-
-def processar_automaticos(usuario):
-    """Processa transações fixas vencidas e renova orçamentos automaticamente."""
-    hoje = date.today()
-    chave = f"{usuario.id}-{hoje.isoformat()}"
-    if chave in _automaticos_cache:
-        return
-    _automaticos_cache[chave] = True
-
-    # 1) Lançar transações fixas vencidas automaticamente
-    fixas = TransacaoFixa.query.filter_by(usuario_id=usuario.id, ativo=True).all()
-    lancou = 0
-    for fixa in fixas:
-        if not fixa.pago_no_mes(hoje.year, hoje.month) and hoje.day >= fixa.dia_vencimento:
-            # Criar transação automática
-            transacao = Transacao(
-                tipo=fixa.tipo,
-                valor=fixa.valor,
-                descricao=f'[Auto] {fixa.nome}',
-                data=datetime(hoje.year, hoje.month, min(fixa.dia_vencimento, cal_module.monthrange(hoje.year, hoje.month)[1])),
-                usuario_id=usuario.id,
-                categoria_id=fixa.categoria_id,
-                conta_id=fixa.conta_id
-            )
-            db.session.add(transacao)
-            fixa.marcar_pago(hoje.year, hoje.month)
-            lancou += 1
-
-    # 2) Renovar orçamentos do mês anterior
-    orc_atual = Orcamento.query.filter_by(
-        usuario_id=usuario.id, mes=hoje.month, ano=hoje.year
-    ).count()
-    if orc_atual == 0:
-        # Buscar mês anterior
-        if hoje.month == 1:
-            mes_ant, ano_ant = 12, hoje.year - 1
-        else:
-            mes_ant, ano_ant = hoje.month - 1, hoje.year
-        orcs_anteriores = Orcamento.query.filter_by(
-            usuario_id=usuario.id, mes=mes_ant, ano=ano_ant
-        ).all()
-        for orc in orcs_anteriores:
-            novo = Orcamento(
-                categoria_id=orc.categoria_id,
-                valor_limite=orc.valor_limite,
-                mes=hoje.month,
-                ano=hoje.year,
-                usuario_id=usuario.id
-            )
-            db.session.add(novo)
-
-    if lancou > 0 or orc_atual == 0:
-        db.session.commit()
-
-@app.before_request
-def auto_processar():
-    """Roda automações em cada request (com cache diário)."""
-    # Só processa em rotas de página, não em estáticos
-    if request.endpoint and request.endpoint != 'static':
-        try:
-            usuario = Usuario.query.first()
-            if usuario:
-                processar_automaticos(usuario)
-        except Exception:
-            pass
 
 
 # =============================================
@@ -801,6 +847,7 @@ def detectar_gastos_incomuns(usuario):
 # =============================================
 
 @app.route('/api/bot', methods=['POST'])
+@login_required
 def api_bot():
     dados = request.get_json()
     if not dados:
@@ -809,7 +856,7 @@ def api_bot():
     mensagem = dados.get('mensagem', '').strip()
     history = dados.get('history', []) # Receberemos o histórico em JSON do Front
     
-    usuario = get_user()
+    usuario = current_user
     
     # Montando o contexto pro Gemini saber de quem ele está cuidando
     # (Contas disponíveis e Categorias pra ele usar no Function Calling)
@@ -833,6 +880,7 @@ def api_bot():
     # Chamada pro Cérebro LLM (nosso gemini_bot.py)
     try:
         from gemini_bot import call_gemini_bot
+        usuario = current_user
         
         # O histórico também é modificado com o Append In-Memory, e o JS manda pra cá.
         # Nós processamos
@@ -895,9 +943,10 @@ def api_bot():
         return jsonify({"status": "error", "resposta": f"Ops, erro no cérebro: {str(e)}"})
 
 @app.route('/api/bot/notificacoes', methods=['GET'])
+@login_required
 def api_bot_notificacoes():
     """Retorna alertas de faturas ou contas vencendo nos próximos 3 dias, simulando as mensagens ativas do Twilio."""
-    usuario = get_user()
+    usuario = current_user
     hoje = date.today()
     mensagens_alerta = []
     
@@ -930,6 +979,7 @@ def api_bot_notificacoes():
 # =============================================
 
 @app.route('/')
+@login_required
 def home():
     return redirect(url_for('dashboard'))
 
@@ -939,8 +989,9 @@ def home():
 # =============================================
 
 @app.route('/dashboard')
+@login_required
 def dashboard():
-    usuario = get_user()
+    usuario = current_user
     mes_filtro = request.args.get('mes', '')
     ano_filtro = request.args.get('ano', '')
     categoria_filtro = request.args.get('categoria', '')
@@ -1047,8 +1098,9 @@ def dashboard():
 # =============================================
 
 @app.route('/transacao/nova', methods=['POST'])
+@login_required
 def nova_transacao():
-    usuario = get_user()
+    usuario = current_user
     tipo = request.form.get('tipo', '').strip().lower()
     valor = request.form.get('valor', '')
     categoria_id = request.form.get('categoria_id', '')
@@ -1098,8 +1150,9 @@ def nova_transacao():
 
 
 @app.route('/transacao/editar/<int:id>', methods=['POST'])
+@login_required
 def editar_transacao(id):
-    usuario = get_user()
+    usuario = current_user
     transacao = Transacao.query.get_or_404(id)
 
     transacao.tipo = request.form.get('tipo', transacao.tipo).strip().lower()
@@ -1137,6 +1190,7 @@ def editar_transacao(id):
 
 
 @app.route('/transacao/excluir/<int:id>', methods=['POST'])
+@login_required
 def excluir_transacao(id):
     transacao = Transacao.query.get_or_404(id)
     db.session.delete(transacao)
@@ -1146,6 +1200,7 @@ def excluir_transacao(id):
 
 
 @app.route('/transacao/duplicar/<int:id>', methods=['POST'])
+@login_required
 def duplicar_transacao(id):
     original = Transacao.query.get_or_404(id)
     nova = Transacao(
@@ -1164,8 +1219,9 @@ def duplicar_transacao(id):
 
 
 @app.route('/transacao/parcelada', methods=['POST'])
+@login_required
 def nova_transacao_parcelada():
-    usuario = get_user()
+    usuario = current_user
     tipo = request.form.get('tipo', '').strip().lower()
     valor_total = request.form.get('valor', '')
     num_parcelas = request.form.get('parcelas', '')
@@ -1227,8 +1283,9 @@ def nova_transacao_parcelada():
 
 
 @app.route('/transferir', methods=['POST'])
+@login_required
 def transferir():
-    usuario = get_user()
+    usuario = current_user
     conta_origem_id = request.form.get('conta_origem', '')
     conta_destino_id = request.form.get('conta_destino', '')
     valor = request.form.get('valor', '')
@@ -1272,8 +1329,9 @@ def transferir():
 
 
 @app.route('/importar', methods=['GET', 'POST'])
+@login_required
 def importar():
-    usuario = get_user()
+    usuario = current_user
     categorias = Categoria.query.filter_by(usuario_id=usuario.id).order_by(Categoria.nome).all()
     contas = Conta.query.filter_by(usuario_id=usuario.id, ativo=True).all()
 
@@ -1363,8 +1421,9 @@ def importar():
 
 
 @app.route('/api/insights')
+@login_required
 def api_insights():
-    usuario = get_user()
+    usuario = current_user
     resumo = calcular_resumo_semanal(usuario)
     previsao = calcular_previsao_saldo(usuario)
     score = calcular_score_financeiro(usuario)
@@ -1382,15 +1441,17 @@ def api_insights():
 # =============================================
 
 @app.route('/contas')
+@login_required
 def contas():
-    usuario = get_user()
+    usuario = current_user
     contas = Conta.query.filter_by(usuario_id=usuario.id).all()
     return render_template('contas.html', contas=contas)
 
 
 @app.route('/conta/nova', methods=['POST'])
+@login_required
 def nova_conta():
-    usuario = get_user()
+    usuario = current_user
     nome = request.form.get('nome', '').strip()
     tipo = request.form.get('tipo', 'corrente')
     saldo_inicial = request.form.get('saldo_inicial', '0')
@@ -1415,6 +1476,7 @@ def nova_conta():
 
 
 @app.route('/conta/editar/<int:id>', methods=['POST'])
+@login_required
 def editar_conta(id):
     conta = Conta.query.get_or_404(id)
 
@@ -1434,6 +1496,7 @@ def editar_conta(id):
 
 
 @app.route('/conta/excluir/<int:id>', methods=['POST'])
+@login_required
 def excluir_conta(id):
     conta = Conta.query.get_or_404(id)
     db.session.delete(conta)
@@ -1447,15 +1510,17 @@ def excluir_conta(id):
 # =============================================
 
 @app.route('/categorias')
+@login_required
 def categorias():
-    usuario = get_user()
+    usuario = current_user
     cats = Categoria.query.filter_by(usuario_id=usuario.id).order_by(Categoria.tipo, Categoria.nome).all()
     return render_template('categorias.html', categorias=cats)
 
 
 @app.route('/categoria/nova', methods=['POST'])
+@login_required
 def nova_categoria():
-    usuario = get_user()
+    usuario = current_user
     nome = request.form.get('nome', '').strip()
     tipo = request.form.get('tipo', 'despesa')
     icone = request.form.get('icone', 'fa-tag')
@@ -1473,6 +1538,7 @@ def nova_categoria():
 
 
 @app.route('/categoria/excluir/<int:id>', methods=['POST'])
+@login_required
 def excluir_categoria(id):
     cat = Categoria.query.get_or_404(id)
     db.session.delete(cat)
@@ -1486,8 +1552,9 @@ def excluir_categoria(id):
 # =============================================
 
 @app.route('/tag/nova', methods=['POST'])
+@login_required
 def nova_tag():
-    usuario = get_user()
+    usuario = current_user
     nome = request.form.get('nome', '').strip()
     cor = request.form.get('cor', '#45b7d1')
 
@@ -1503,6 +1570,7 @@ def nova_tag():
 
 
 @app.route('/tag/excluir/<int:id>', methods=['POST'])
+@login_required
 def excluir_tag(id):
     tag = Tag.query.get_or_404(id)
     db.session.delete(tag)
@@ -1516,8 +1584,9 @@ def excluir_tag(id):
 # =============================================
 
 @app.route('/transacoes-fixas/<tipo>')
+@login_required
 def transacoes_fixas(tipo):
-    usuario = get_user()
+    usuario = current_user
     if tipo not in ('receita', 'despesa'):
         tipo = 'despesa'
 
@@ -1542,8 +1611,9 @@ def transacoes_fixas(tipo):
 
 
 @app.route('/transacao-fixa/nova', methods=['POST'])
+@login_required
 def nova_transacao_fixa():
-    usuario = get_user()
+    usuario = current_user
     nome = request.form.get('nome', '').strip()
     valor = request.form.get('valor', '')
     dia = request.form.get('dia_vencimento', '')
@@ -1583,8 +1653,9 @@ def nova_transacao_fixa():
 
 
 @app.route('/transacao-fixa/pagar/<int:id>', methods=['POST'])
+@login_required
 def pagar_transacao_fixa(id):
-    usuario = get_user()
+    usuario = current_user
     transacao_fixa = TransacaoFixa.query.get_or_404(id)
 
     target_url = url_for('transacoes_fixas', tipo=transacao_fixa.tipo)
@@ -1609,6 +1680,7 @@ def pagar_transacao_fixa(id):
 
 
 @app.route('/transacao-fixa/excluir/<int:id>', methods=['POST'])
+@login_required
 def excluir_transacao_fixa(id):
     transacao_fixa = TransacaoFixa.query.get_or_404(id)
     tipo = transacao_fixa.tipo
@@ -1623,8 +1695,9 @@ def excluir_transacao_fixa(id):
 # =============================================
 
 @app.route('/orcamentos')
+@login_required
 def orcamentos():
-    usuario = get_user()
+    usuario = current_user
     hoje = date.today()
     mes = request.args.get('mes', hoje.month, type=int)
     ano = request.args.get('ano', hoje.year, type=int)
@@ -1650,8 +1723,9 @@ def orcamentos():
 
 
 @app.route('/orcamento/novo', methods=['POST'])
+@login_required
 def novo_orcamento():
-    usuario = get_user()
+    usuario = current_user
     categoria_id = request.form.get('categoria_id', '')
     valor_limite = request.form.get('valor_limite', '')
     mes = request.form.get('mes', '')
@@ -1676,6 +1750,7 @@ def novo_orcamento():
 
 
 @app.route('/orcamento/excluir/<int:id>', methods=['POST'])
+@login_required
 def excluir_orcamento(id):
     orc = Orcamento.query.get_or_404(id)
     db.session.delete(orc)
@@ -1689,8 +1764,9 @@ def excluir_orcamento(id):
 # =============================================
 
 @app.route('/metas')
+@login_required
 def metas():
-    usuario = get_user()
+    usuario = current_user
     metas_ativas = Meta.query.filter_by(usuario_id=usuario.id, concluida=False).order_by(Meta.prazo).all()
     metas_concluidas = Meta.query.filter_by(usuario_id=usuario.id, concluida=True).all()
 
@@ -1705,8 +1781,9 @@ def metas():
 
 
 @app.route('/meta/nova', methods=['POST'])
+@login_required
 def nova_meta():
-    usuario = get_user()
+    usuario = current_user
     nome = request.form.get('nome', '').strip()
     descricao = request.form.get('descricao', '').strip()
     valor_alvo = request.form.get('valor_alvo', '')
@@ -1744,6 +1821,7 @@ def nova_meta():
 
 
 @app.route('/meta/depositar/<int:id>', methods=['POST'])
+@login_required
 def depositar_meta(id):
     meta = Meta.query.get_or_404(id)
 
@@ -1777,6 +1855,7 @@ def depositar_meta(id):
 
 
 @app.route('/meta/excluir/<int:id>', methods=['POST'])
+@login_required
 def excluir_meta(id):
     meta = Meta.query.get_or_404(id)
     db.session.delete(meta)
@@ -1790,16 +1869,18 @@ def excluir_meta(id):
 # =============================================
 
 @app.route('/cartoes')
+@login_required
 def cartoes():
-    usuario = get_user()
+    usuario = current_user
     cards = CartaoCredito.query.filter_by(usuario_id=usuario.id).all()
     contas = Conta.query.filter_by(usuario_id=usuario.id, ativo=True).all()
     return render_template('cartoes.html', cartoes=cards, contas=contas)
 
 
 @app.route('/cartao/novo', methods=['POST'])
+@login_required
 def novo_cartao():
-    usuario = get_user()
+    usuario = current_user
     nome = request.form.get('nome', '').strip()
     bandeira = request.form.get('bandeira', 'Visa')
     limite = request.form.get('limite', '')
@@ -1844,6 +1925,7 @@ def novo_cartao():
 
 
 @app.route('/cartao/excluir/<int:id>', methods=['POST'])
+@login_required
 def excluir_cartao(id):
     cartao = CartaoCredito.query.get_or_404(id)
     db.session.delete(cartao)
@@ -1857,8 +1939,9 @@ def excluir_cartao(id):
 # =============================================
 
 @app.route('/relatorios')
+@login_required
 def relatorios():
-    usuario = get_user()
+    usuario = current_user
     hoje = date.today()
     ano = request.args.get('ano', hoje.year, type=int)
 
@@ -1938,8 +2021,9 @@ def relatorios():
 # =============================================
 
 @app.route('/calendario')
+@login_required
 def calendario():
-    usuario = get_user()
+    usuario = current_user
     hoje = date.today()
     mes = request.args.get('mes', hoje.month, type=int)
     ano = request.args.get('ano', hoje.year, type=int)
@@ -2004,8 +2088,9 @@ def calendario():
 # =============================================
 
 @app.route('/busca')
+@login_required
 def busca():
-    usuario = get_user()
+    usuario = current_user
     q = request.args.get('q', '').strip()
     tipo = request.args.get('tipo', '')
     data_inicio = request.args.get('data_inicio', '')
@@ -2070,8 +2155,9 @@ def busca():
 # =============================================
 
 @app.route('/perfil')
+@login_required
 def perfil():
-    usuario = get_user()
+    usuario = current_user
     total_transacoes = Transacao.query.filter_by(usuario_id=usuario.id).count()
     total_receitas = sum(t.valor for t in Transacao.query.filter_by(usuario_id=usuario.id, tipo='receita').all())
     total_despesas = sum(t.valor for t in Transacao.query.filter_by(usuario_id=usuario.id, tipo='despesa').all())
@@ -2087,8 +2173,9 @@ def perfil():
 
 
 @app.route('/perfil/editar', methods=['POST'])
+@login_required
 def editar_perfil():
-    usuario = get_user()
+    usuario = current_user
     nome = request.form.get('nome', '').strip()
 
     if not nome:
@@ -2106,8 +2193,9 @@ def editar_perfil():
 # =============================================
 
 @app.route('/tema/toggle', methods=['POST'])
+@login_required
 def toggle_tema():
-    usuario = get_user()
+    usuario = current_user
     usuario.tema = 'light' if usuario.tema == 'dark' else 'dark'
     db.session.commit()
     return jsonify({'tema': usuario.tema})
@@ -2118,8 +2206,9 @@ def toggle_tema():
 # =============================================
 
 @app.route('/investimentos')
+@login_required
 def investimentos():
-    usuario = get_user()
+    usuario = current_user
     investimentos = Investimento.query.filter_by(usuario_id=usuario.id).all()
     
     # Calcular total investido e rendimentos gerais
@@ -2152,8 +2241,9 @@ def investimentos():
     )
 
 @app.route('/investimentos/novo', methods=['POST'])
+@login_required
 def novo_investimento():
-    usuario = get_user()
+    usuario = current_user
     nome = request.form.get('nome')
     ticker = request.form.get('ticker')
     tipo = request.form.get('tipo')
@@ -2202,15 +2292,17 @@ def novo_investimento():
     return redirect(url_for('investimentos'))
 
 @app.route('/investimentos/<int:id>')
+@login_required
 def investimento_detalhe(id):
-    usuario = get_user()
+    usuario = current_user
     investimento = Investimento.query.filter_by(id=id, usuario_id=usuario.id).first_or_404()
     from datetime import datetime
     return render_template('investimento_detalhe.html', investimento=investimento, now=datetime.utcnow())
 
 @app.route('/investimentos/<int:id>/transacao', methods=['POST'])
+@login_required
 def nova_transacao_investimento(id):
-    usuario = get_user()
+    usuario = current_user
     investimento = Investimento.query.filter_by(id=id, usuario_id=usuario.id).first_or_404()
     
     tipo_transacao = request.form.get('tipo_transacao')
@@ -2251,8 +2343,9 @@ def nova_transacao_investimento(id):
     return redirect(url_for('investimento_detalhe', id=id))
 
 @app.route('/investimentos/<int:id>/excluir', methods=['POST'])
+@login_required
 def excluir_investimento(id):
-    usuario = get_user()
+    usuario = current_user
     investimento = Investimento.query.filter_by(id=id, usuario_id=usuario.id).first_or_404()
     db.session.delete(investimento)
     db.session.commit()
@@ -2260,8 +2353,9 @@ def excluir_investimento(id):
     return redirect(url_for('investimentos'))
 
 @app.route('/investimentos/transacao/<int:transacao_id>/excluir', methods=['POST'])
+@login_required
 def excluir_transacao_investimento(transacao_id):
-    usuario = get_user()
+    usuario = current_user
     transacao = TransacaoInvestimento.query.get_or_404(transacao_id)
     
     # Verifica se a transação pertence a um investimento do usuário logado
@@ -2280,8 +2374,9 @@ def excluir_transacao_investimento(transacao_id):
 # =============================================
 
 @app.route('/exportar/csv')
+@login_required
 def exportar_csv():
-    usuario = get_user()
+    usuario = current_user
     mes = request.args.get('mes', None, type=int)
     ano = request.args.get('ano', None, type=int)
 
@@ -2320,8 +2415,9 @@ def exportar_csv():
 
 
 @app.route('/exportar/powerbi')
+@login_required
 def exportar_powerbi():
-    usuario = get_user()
+    usuario = current_user
     
     # Busca todas as transações, sem filtro de mês/ano para o Power BI ter o histórico completo
     transacoes = Transacao.query.filter_by(usuario_id=usuario.id).order_by(Transacao.data.asc()).all()
@@ -2381,6 +2477,7 @@ def allowed_file(filename):
 
 
 @app.route('/transacao/comprovante/<int:id>', methods=['POST'])
+@login_required
 def upload_comprovante(id):
     transacao = Transacao.query.get_or_404(id)
 
@@ -2407,6 +2504,223 @@ def upload_comprovante(id):
         flash('Tipo de arquivo não permitido. Use: PNG, JPG, PDF, WebP.', 'error')
 
     return redirect(url_for('dashboard'))
+
+
+# =============================================
+# AUTENTICAÇÃO
+# =============================================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        senha = request.form.get('senha', '')
+
+        if not email or not senha:
+            flash('Preencha todos os campos.', 'error')
+            return render_template('login.html')
+
+        usuario = Usuario.query.filter_by(email=email).first()
+        if usuario and usuario.check_password(senha):
+            login_user(usuario, remember=True)
+            prox = request.args.get('next')
+            return redirect(prox or url_for('dashboard'))
+        else:
+            flash('Email ou senha inválidos.', 'error')
+
+    return render_template('login.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        nome = request.form.get('nome', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        senha = request.form.get('senha', '')
+        confirmar = request.form.get('confirmar_senha', '')
+
+        # Validações de segurança
+        if not nome or not email or not senha:
+            flash('Preencha todos os campos.', 'error')
+            return render_template('register.html')
+
+        if len(senha) < 6:
+            flash('A senha deve ter no mínimo 6 caracteres.', 'error')
+            return render_template('register.html')
+
+        if senha != confirmar:
+            flash('As senhas não coincidem.', 'error')
+            return render_template('register.html')
+
+        if Usuario.query.filter_by(email=email).first():
+            flash('Este email já está cadastrado.', 'error')
+            return redirect(url_for('register'))
+
+        # Salvar dados temporários na sessão e enviar código
+        from flask import session
+        session['registro_pendente'] = {
+            'nome': nome,
+            'email': email,
+            'senha': senha
+        }
+
+        enviado = gerar_e_enviar_codigo(email, tipo='registro')
+        if enviado:
+            flash('Código de verificação enviado para seu email!', 'success')
+            return redirect(url_for('verificar_codigo', tipo='registro'))
+        else:
+            flash('Erro ao enviar email. Verifique o endereço e tente novamente.', 'error')
+
+    return render_template('register.html')
+
+
+@app.route('/verificar/<tipo>', methods=['GET', 'POST'])
+def verificar_codigo(tipo):
+    """Verifica o código de 6 dígitos enviado por email."""
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+
+    from flask import session
+
+    if tipo == 'registro':
+        dados = session.get('registro_pendente')
+        if not dados:
+            flash('Sessão expirada. Faça o cadastro novamente.', 'error')
+            return redirect(url_for('register'))
+        email = dados['email']
+    elif tipo == 'reset':
+        email = session.get('reset_email')
+        if not email:
+            flash('Sessão expirada. Solicite novamente.', 'error')
+            return redirect(url_for('esqueci_senha'))
+    else:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        codigo_digitado = request.form.get('codigo', '').strip()
+
+        sucesso, erro = validar_codigo(email, codigo_digitado, tipo=tipo)
+
+        if sucesso:
+            if tipo == 'registro':
+                # Criar o usuário
+                novo = Usuario(nome=dados['nome'], email=dados['email'])
+                novo.set_password(dados['senha'])
+                novo.email_verificado = True
+                db.session.add(novo)
+                db.session.commit()
+
+                criar_categorias_padrao(novo.id)
+                criar_conta_padrao(novo.id)
+                db.session.commit()
+
+                session.pop('registro_pendente', None)
+                login_user(novo, remember=True)
+                flash('Bem-vindo(a) ao FinançasPro! 🎉', 'success')
+                return redirect(url_for('dashboard'))
+
+            elif tipo == 'reset':
+                session['reset_verificado'] = True
+                return redirect(url_for('resetar_senha'))
+        else:
+            flash(erro, 'error')
+
+    return render_template('verificar.html', tipo=tipo, email=email)
+
+
+@app.route('/reenviar-codigo/<tipo>', methods=['POST'])
+def reenviar_codigo(tipo):
+    """Reenvia o código de verificação."""
+    from flask import session
+
+    if tipo == 'registro':
+        dados = session.get('registro_pendente')
+        email = dados['email'] if dados else None
+    elif tipo == 'reset':
+        email = session.get('reset_email')
+    else:
+        return redirect(url_for('login'))
+
+    if email:
+        enviado = gerar_e_enviar_codigo(email, tipo=tipo)
+        if enviado:
+            flash('Novo código enviado!', 'success')
+        else:
+            flash('Erro ao reenviar. Tente novamente.', 'error')
+
+    return redirect(url_for('verificar_codigo', tipo=tipo))
+
+
+@app.route('/esqueci-senha', methods=['GET', 'POST'])
+def esqueci_senha():
+    """Solicita email para reset de senha."""
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        usuario = Usuario.query.filter_by(email=email).first()
+
+        if usuario:
+            from flask import session
+            session['reset_email'] = email
+            gerar_e_enviar_codigo(email, tipo='reset')
+
+        # Sempre mostra sucesso (segurança: não revelar se email existe)
+        flash('Se o email estiver cadastrado, você receberá um código.', 'success')
+        if usuario:
+            return redirect(url_for('verificar_codigo', tipo='reset'))
+        return render_template('esqueci_senha.html')
+
+    return render_template('esqueci_senha.html')
+
+
+@app.route('/resetar-senha', methods=['GET', 'POST'])
+def resetar_senha():
+    """Formulário para definir nova senha após verificação."""
+    from flask import session
+
+    if not session.get('reset_verificado') or not session.get('reset_email'):
+        flash('Acesso inválido.', 'error')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        senha = request.form.get('senha', '')
+        confirmar = request.form.get('confirmar_senha', '')
+
+        if len(senha) < 6:
+            flash('A senha deve ter no mínimo 6 caracteres.', 'error')
+            return render_template('resetar_senha.html')
+
+        if senha != confirmar:
+            flash('As senhas não coincidem.', 'error')
+            return render_template('resetar_senha.html')
+
+        usuario = Usuario.query.filter_by(email=session['reset_email']).first()
+        if usuario:
+            usuario.set_password(senha)
+            db.session.commit()
+
+        session.pop('reset_email', None)
+        session.pop('reset_verificado', None)
+        flash('Senha redefinida com sucesso! Faça login.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('resetar_senha.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('Você saiu da sua conta.', 'info')
+    return redirect(url_for('login'))
 
 
 # =============================================

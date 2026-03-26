@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-br" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificação — FinançasPro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2.1">
+    <style>
+        .code-inputs {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin: 8px 0;
+        }
+
+        .code-inputs input {
+            width: 52px;
+            height: 60px;
+            text-align: center;
+            font-size: 1.6rem;
+            font-weight: 700;
+            font-family: 'Inter', monospace;
+            background: var(--bg-input);
+            border: 2px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--accent-purple);
+            outline: none;
+            transition: var(--transition);
+            caret-color: var(--accent-purple);
+        }
+
+        .code-inputs input:focus {
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 0 3px var(--accent-purple-glow);
+        }
+
+        .code-inputs input.filled {
+            border-color: var(--accent-green);
+            background: rgba(0, 214, 143, 0.06);
+        }
+
+        .email-display {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 50px;
+            background: rgba(124, 92, 252, 0.1);
+            border: 1px solid rgba(124, 92, 252, 0.2);
+            color: var(--accent-purple);
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .countdown {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 16px;
+        }
+
+        .countdown strong {
+            color: var(--accent-purple);
+        }
+    </style>
+</head>
+
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-container" id="flashContainer">
+        {% for category, message in messages %}
+        <div class="flash-message flash-{{ category }}">
+            <i class="fas {% if category == 'success' %}fa-check-circle{% elif category == 'error' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %}"></i>
+            <span>{{ message }}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="auth-section">
+        <div class="auth-card" style="animation: fadeInUp 0.5s ease-out; max-width: 460px;">
+            <div class="auth-header">
+                <div class="auth-icon">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <h1>Verificação de Email</h1>
+                <p>Digite o código de 6 dígitos enviado para:</p>
+                <div class="email-display">
+                    <i class="fas fa-envelope"></i>
+                    {{ email }}
+                </div>
+            </div>
+
+            <form class="auth-form" method="POST" id="verifyForm">
+                <!-- Hidden input to combine digits -->
+                <input type="hidden" name="codigo" id="codigoFull">
+
+                <div class="code-inputs">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-digit"
+                        data-index="0" autofocus autocomplete="one-time-code">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-digit"
+                        data-index="1">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-digit"
+                        data-index="2">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-digit"
+                        data-index="3">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-digit"
+                        data-index="4">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-digit"
+                        data-index="5">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block btn-lg" id="verifyBtn">
+                    <i class="fas fa-check-circle"></i> Verificar Código
+                </button>
+
+                <div style="text-align: center; margin-top: 16px;">
+                    <p class="countdown">Não recebeu? Aguarde <strong id="timer">60</strong>s</p>
+                    <form method="POST" action="{{ url_for('reenviar_codigo', tipo=tipo) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-glass btn-sm" id="resendBtn" disabled
+                            style="margin-top: 8px;">
+                            <i class="fas fa-redo"></i> Reenviar Código
+                        </button>
+                    </form>
+                </div>
+            </form>
+
+            <div class="auth-footer">
+                {% if tipo == 'registro' %}
+                <p><a href="{{ url_for('register') }}"><i class="fas fa-arrow-left"></i> Voltar ao cadastro</a></p>
+                {% else %}
+                <p><a href="{{ url_for('login') }}"><i class="fas fa-arrow-left"></i> Voltar ao login</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // OTP-style code input
+        const digits = document.querySelectorAll('.code-digit');
+        const fullInput = document.getElementById('codigoFull');
+
+        digits.forEach((input, i) => {
+            input.addEventListener('input', (e) => {
+                const val = e.target.value.replace(/\D/g, '');
+                e.target.value = val.slice(0, 1);
+                if (val && i < 5) digits[i + 1].focus();
+                if (val) e.target.classList.add('filled');
+                else e.target.classList.remove('filled');
+                updateFull();
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && i > 0) {
+                    digits[i - 1].focus();
+                    digits[i - 1].value = '';
+                    digits[i - 1].classList.remove('filled');
+                    updateFull();
+                }
+            });
+
+            // Paste support
+            input.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const pasted = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+                pasted.split('').forEach((c, j) => {
+                    if (digits[j]) {
+                        digits[j].value = c;
+                        digits[j].classList.add('filled');
+                    }
+                });
+                if (pasted.length > 0) digits[Math.min(pasted.length, 5)].focus();
+                updateFull();
+            });
+        });
+
+        function updateFull() {
+            fullInput.value = Array.from(digits).map(d => d.value).join('');
+        }
+
+        // Form submit
+        document.getElementById('verifyForm').addEventListener('submit', function (e) {
+            updateFull();
+            if (fullInput.value.length !== 6) {
+                e.preventDefault();
+                alert('Digite os 6 dígitos do código.');
+            }
+        });
+
+        // Countdown timer for resend
+        let seconds = 60;
+        const timerEl = document.getElementById('timer');
+        const resendBtn = document.getElementById('resendBtn');
+        const interval = setInterval(() => {
+            seconds--;
+            timerEl.textContent = seconds;
+            if (seconds <= 0) {
+                clearInterval(interval);
+                resendBtn.disabled = false;
+                resendBtn.style.opacity = '1';
+                timerEl.parentElement.innerHTML = 'Pode reenviar agora.';
+            }
+        }, 1000);
+
+        setTimeout(() => {
+            const flash = document.getElementById('flashContainer');
+            if (flash) flash.style.opacity = '0';
+            setTimeout(() => { if (flash) flash.remove(); }, 500);
+        }, 5000);
+    </script>
+</body>
+
+</html>

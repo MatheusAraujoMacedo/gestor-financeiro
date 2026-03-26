@@ -95,10 +95,19 @@
                     <i class="fas fa-user-astronaut"></i>
                 </div>
                 <div class="user-info">
-                    <span class="user-name">Meu Perfil</span>
-                    <span class="user-role">Configurações</span>
+                    <span class="user-name">{{ usuario.nome if usuario.is_authenticated else 'Visitante' }}</span>
+                    <span class="user-role">{{ usuario.email if usuario.is_authenticated else '' }}</span>
                 </div>
             </a>
+            {% if usuario.is_authenticated %}
+            <a href="{{ url_for('logout') }}" class="sidebar-links" style="display: block; margin-top: 8px;">
+                <span style="color: var(--accent-red); font-size: 0.85rem; padding: 8px 12px; display: flex; align-items: center; gap: 8px; border-radius: var(--radius-md); transition: var(--transition);"
+                    onmouseover="this.style.background='rgba(255,71,87,0.1)'"
+                    onmouseout="this.style.background='transparent'">
+                    <i class="fas fa-sign-out-alt"></i> Sair da Conta
+                </span>
+            </a>
+            {% endif %}
         </div>
     </aside>
 

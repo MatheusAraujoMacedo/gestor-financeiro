@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-br" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Criar conta no FinançasPro - Gestor Financeiro Inteligente">
+    <title>Criar Conta — FinançasPro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2.1">
+</head>
+
+<body>
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-container" id="flashContainer">
+        {% for category, message in messages %}
+        <div class="flash-message flash-{{ category }}">
+            <i class="fas {% if category == 'success' %}fa-check-circle{% elif category == 'error' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %}"></i>
+            <span>{{ message }}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="auth-section">
+        <div class="auth-card" style="animation: fadeInUp 0.5s ease-out;">
+            <div class="auth-header">
+                <div class="auth-icon auth-icon-green">
+                    <i class="fas fa-user-plus"></i>
+                </div>
+                <h1>Criar sua conta</h1>
+                <p>Comece a controlar suas finanças agora</p>
+            </div>
+
+            <form class="auth-form" method="POST" action="{{ url_for('register') }}" id="registerForm">
+                <div class="form-group">
+                    <label><i class="fas fa-user"></i> Nome</label>
+                    <input type="text" name="nome" placeholder="Seu nome" required autocomplete="name"
+                        id="registerNome" minlength="2" maxlength="100">
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-envelope"></i> Email</label>
+                    <input type="email" name="email" placeholder="seu@email.com" required autocomplete="email"
+                        id="registerEmail">
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-lock"></i> Senha</label>
+                    <div style="position: relative;">
+                        <input type="password" name="senha" placeholder="Mínimo 6 caracteres" required
+                            autocomplete="new-password" id="registerSenha" minlength="6">
+                        <button type="button"
+                            style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.9rem;"
+                            onclick="togglePassword(this, 'registerSenha')">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-lock"></i> Confirmar Senha</label>
+                    <div style="position: relative;">
+                        <input type="password" name="confirmar_senha" placeholder="Repita a senha" required
+                            autocomplete="new-password" id="registerConfirmar" minlength="6">
+                        <button type="button"
+                            style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.9rem;"
+                            onclick="togglePassword(this, 'registerConfirmar')">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block btn-lg" id="registerBtn">
+                    <i class="fas fa-paper-plane"></i> Enviar Código de Verificação
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                <p>Já tem conta? <a href="{{ url_for('login') }}">Fazer login</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function togglePassword(btn, inputId) {
+            const input = document.getElementById(inputId);
+            const icon = btn.querySelector('i');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        }
+
+        // Client-side password match validation
+        document.getElementById('registerForm').addEventListener('submit', function (e) {
+            const senha = document.getElementById('registerSenha').value;
+            const confirmar = document.getElementById('registerConfirmar').value;
+            if (senha !== confirmar) {
+                e.preventDefault();
+                alert('As senhas não coincidem!');
+            }
+        });
+
+        setTimeout(() => {
+            const flash = document.getElementById('flashContainer');
+            if (flash) flash.style.opacity = '0';
+            setTimeout(() => { if (flash) flash.remove(); }, 500);
+        }, 5000);
+    </script>
+</body>
+
+</html>
