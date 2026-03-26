@@ -33,6 +33,8 @@ services:
       # - CLOUDINARY_API_KEY
       # - CLOUDINARY_API_SECRET
       # - GEMINI_API_KEY
+      # - MAIL_USERNAME
+      # - MAIL_APP_PASSWORD
       # - TWILIO_ACCOUNT_SID
       # - TWILIO_AUTH_TOKEN
       # - TWILIO_WHATSAPP_NUMBER
